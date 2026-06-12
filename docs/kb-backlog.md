@@ -16,7 +16,7 @@ The queue for the `/kb-expand` loop. One cell per session, top-to-bottom. Protoc
 | 2 | Blues | done (2026-06-12, 5 progressions × 2 plays, validator ✓) |
 | 3 | Rock | done (2026-06-12, 5 progressions × 2 plays, validator ✓) |
 | 4 | Bossa Nova | done (2026-06-12, 5 progressions × 2 plays, validator ✓) |
-| 5 | Funk | todo |
+| 5 | Funk | done (2026-06-12, 5 progressions × 2 plays, validator ✓) |
 | 6 | Reggae | todo |
 | 7 | Country / Folk | todo |
 | 8 | R&B / Neo-soul | todo |
