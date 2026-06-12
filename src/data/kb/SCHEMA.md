@@ -85,6 +85,9 @@ export default {
         // open shapes instead use: frets: [...absolute], onlyRoot: <pc 0-11>
       },
       extensions: ['9'],   // declared color tones beyond the quality (validator allows only these)
+      // declared omissions (honest data, surfaced by the UI):
+      // rootless: true — shape omits the root (e.g. guide-tone grips)
+      // omit3: true    — shape omits the 3rd (e.g. power chords; works over major or minor)
       note: 'root–♭7–♭3',
     },
     // …

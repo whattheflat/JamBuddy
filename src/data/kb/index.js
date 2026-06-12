@@ -6,6 +6,9 @@ import jazzGuitar from './jazz/guitar.js'
 import bluesMeta from './blues/meta.js'
 import bluesProgressions from './blues/progressions.js'
 import bluesGuitar from './blues/guitar.js'
+import rockMeta from './rock/meta.js'
+import rockProgressions from './rock/progressions.js'
+import rockGuitar from './rock/guitar.js'
 
 export default {
   jazz: {
@@ -17,5 +20,10 @@ export default {
     meta: bluesMeta,
     progressions: bluesProgressions,
     instruments: { guitar: bluesGuitar },
+  },
+  rock: {
+    meta: rockMeta,
+    progressions: rockProgressions,
+    instruments: { guitar: rockGuitar },
   },
 }

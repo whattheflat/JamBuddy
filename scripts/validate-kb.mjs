@@ -72,7 +72,10 @@ function checkGuitarShape(where, chordStep, quality) {
   })
   for (const pc of sounded)
     if (!allowed.has(pc)) return err(where, `sounded pc ${pc} is not in ${quality} (+ext) — shape misspells the chord`)
-  const required = iv.filter(i => i !== PERFECT_FIFTH && !(chordStep.rootless && i === 0))
+  const required = iv.filter(i =>
+    i !== PERFECT_FIFTH
+    && !(chordStep.rootless && i === 0)
+    && !(chordStep.omit3 && (i === 3 || i === 4)))
   for (const pc of required)
     if (!sounded.has(pc)) return err(where, `defining tone pc ${pc} of ${quality} missing from shape`)
 }
