@@ -21,6 +21,9 @@ import reggaeGuitar from './reggae/guitar.js'
 import countryMeta from './country/meta.js'
 import countryProgressions from './country/progressions.js'
 import countryGuitar from './country/guitar.js'
+import rnbMeta from './rnb/meta.js'
+import rnbProgressions from './rnb/progressions.js'
+import rnbGuitar from './rnb/guitar.js'
 
 export default {
   jazz: {
@@ -57,5 +60,10 @@ export default {
     meta: countryMeta,
     progressions: countryProgressions,
     instruments: { guitar: countryGuitar },
+  },
+  rnb: {
+    meta: rnbMeta,
+    progressions: rnbProgressions,
+    instruments: { guitar: rnbGuitar },
   },
 }
