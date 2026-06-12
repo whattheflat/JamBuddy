@@ -15,6 +15,9 @@ import bossaGuitar from './bossa/guitar.js'
 import funkMeta from './funk/meta.js'
 import funkProgressions from './funk/progressions.js'
 import funkGuitar from './funk/guitar.js'
+import reggaeMeta from './reggae/meta.js'
+import reggaeProgressions from './reggae/progressions.js'
+import reggaeGuitar from './reggae/guitar.js'
 
 export default {
   jazz: {
@@ -41,5 +44,10 @@ export default {
     meta: funkMeta,
     progressions: funkProgressions,
     instruments: { guitar: funkGuitar },
+  },
+  reggae: {
+    meta: reggaeMeta,
+    progressions: reggaeProgressions,
+    instruments: { guitar: reggaeGuitar },
   },
 }
