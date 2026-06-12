@@ -18,6 +18,9 @@ import funkGuitar from './funk/guitar.js'
 import reggaeMeta from './reggae/meta.js'
 import reggaeProgressions from './reggae/progressions.js'
 import reggaeGuitar from './reggae/guitar.js'
+import countryMeta from './country/meta.js'
+import countryProgressions from './country/progressions.js'
+import countryGuitar from './country/guitar.js'
 
 export default {
   jazz: {
@@ -49,5 +52,10 @@ export default {
     meta: reggaeMeta,
     progressions: reggaeProgressions,
     instruments: { guitar: reggaeGuitar },
+  },
+  country: {
+    meta: countryMeta,
+    progressions: countryProgressions,
+    instruments: { guitar: countryGuitar },
   },
 }
