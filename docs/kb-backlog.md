@@ -6,13 +6,13 @@ The queue for the `/kb-expand` loop. One cell per session, top-to-bottom. Protoc
 
 | # | Cell | Status |
 |---|---|---|
-| 0 | Bootstrap: `src/data/kb/` + `SCHEMA.md` + `scripts/validate-kb.mjs` + `kb/index.js` + **jazz/guitar gold standard** | todo |
+| 0 | Bootstrap: `src/data/kb/` + `SCHEMA.md` + `scripts/validate-kb.mjs` + `kb/index.js` + **jazz/guitar gold standard** | done (2026-06-12, iteration 1) |
 
 ## Guitar
 
 | # | Style | Status |
 |---|---|---|
-| 1 | Jazz (part of bootstrap) | todo |
+| 1 | Jazz (part of bootstrap) | done (2026-06-12, 5 progressions × 2 plays, validator ✓) |
 | 2 | Blues | todo |
 | 3 | Rock | todo |
 | 4 | Bossa Nova | todo |
