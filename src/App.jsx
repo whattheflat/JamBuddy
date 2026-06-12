@@ -10,6 +10,10 @@ import Settings from './components/Settings'
 import DebugView from './components/DebugView'
 import DrumView from './components/DrumView'
 import { NOTES, detectKey, detectTopKeys, matchChordFromChroma, detectRepeatingProgression, getChordTones, getChordCandidates, getNoteHistoryAnalysis } from './lib/theory'
+import ChordDetailModal from './components/ChordDetailModal'
+import CurrentJamPanel from './components/CurrentJamPanel'
+import LoopStation from './components/LoopStation'
+import { useLoopEngine } from './services/loopEngine'
 import settingIcon from './assets/setting-icon.png'
 
 const DEFAULTS = {
@@ -80,6 +84,23 @@ export default function App() {
   const onsetTimestampsRef      = useRef([])
   const bpmSmoothRef            = useRef(null)
 
+  // ── Loop station ─────────────────────────────────────────────────────────────
+  const {
+    slots,
+    masterLen,
+    setStream:     loopSetStream,
+    handleSlotClick,
+    commitTrim,
+    cancelRecord,
+    retrimSlot,
+    deleteSlot,
+    setVolume:      loopSetVolume,
+    addSlot:        loopAddSlot,
+    audioCtxRef:    loopAudioCtxRef,
+    masterStartRef: loopMasterStartRef,
+    masterLenRef:   loopMasterLenRef,
+  } = useLoopEngine(bpm)
+
   // ── Key: auto-detected + optional lock ───────────────────────────────────────
   const [keyInfo, setKeyInfo]     = useState(null)     // auto-detected
   const [lockedKey, setLockedKey] = useState(null)     // { root, mode } or null
@@ -92,6 +113,7 @@ export default function App() {
   // ── Chord state ───────────────────────────────────────────────────────────────
   const [chordHistory, setChordHistory]               = useState([])
   const [detectedProgression, setDetectedProgression] = useState(null)
+  const [selectedChord, setSelectedChord]             = useState(null)
 
   // ── Top key candidates (shown as quick-lock chips) ────────────────────────────
   const [topKeyCandidates, setTopKeyCandidates] = useState([])
@@ -521,6 +543,7 @@ export default function App() {
           setMicError(true)
           setIsListening(false)
         }}
+        onStreamReady={loopSetStream}
       />
 
       {micError && (
@@ -530,12 +553,16 @@ export default function App() {
         </div>
       )}
 
+      {/* ── Chord detail modal ── */}
+      <ChordDetailModal chord={selectedChord} onClose={() => setSelectedChord(null)} onChordClick={setSelectedChord} keyInfo={effectiveKey} chordHistory={chordHistory} />
+
       {/* ── Progression banner ── */}
       <ProgressionBanner
         chordHistory={chordHistory}
         keyInfo={effectiveKey}
         detectedProgression={detectedProgression}
         currentChord={currentChord}
+        onChordClick={setSelectedChord}
       />
 
       {/* ── Instrument + progressions row ── */}
@@ -552,6 +579,32 @@ export default function App() {
           </div>
         </div>
       </div>
+
+
+      {/* ── Current jam — collapsible ── */}
+      <CurrentJamPanel
+        keyInfo={effectiveKey}
+        chordHistory={chordHistory}
+        detectedProgression={detectedProgression}
+        onChordClick={setSelectedChord}
+      />
+
+      {/* ── Loop station ── */}
+      <LoopStation
+        slots={slots}
+        bpm={bpm}
+        masterLen={masterLen}
+        audioCtxRef={loopAudioCtxRef}
+        masterStartRef={loopMasterStartRef}
+        masterLenRef={loopMasterLenRef}
+        onSlotClick={handleSlotClick}
+        onCommitTrim={commitTrim}
+        onCancelRecord={cancelRecord}
+        onRetrim={retrimSlot}
+        onDelete={deleteSlot}
+        onVolumeChange={loopSetVolume}
+        onAddSlot={loopAddSlot}
+      />
 
       {/* ── Behind the scenes — collapsible ── */}
       <div className="mb-3 bg-panel border border-border rounded-xl overflow-hidden">
