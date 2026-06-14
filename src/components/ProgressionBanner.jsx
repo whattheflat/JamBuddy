@@ -1,21 +1,8 @@
 import { useRef, useEffect } from 'react'
 import { toRomanNumeral } from '../lib/theory'
+import { findLoopPosition } from '../lib/match'
 
 const HISTORY_SHOWN = 8
-
-function findLoopPosition(chordHistory, progression) {
-  if (!progression?.length || !chordHistory.length) return -1
-  const last = chordHistory[chordHistory.length - 1]
-  for (let p = progression.length - 1; p >= 0; p--) {
-    if (progression[p] !== last) continue
-    let match = true
-    for (let i = 1; i < Math.min(p + 1, chordHistory.length); i++) {
-      if (progression[p - i] !== chordHistory[chordHistory.length - 1 - i]) { match = false; break }
-    }
-    if (match) return p
-  }
-  return progression.indexOf(last)
-}
 
 export default function ProgressionBanner({ chordHistory, keyInfo, detectedProgression, currentChord, onChordClick }) {
   const { root, mode, confidence } = keyInfo ?? {}
