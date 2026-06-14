@@ -13,6 +13,7 @@ import { NOTES, detectKey, detectTopKeys, matchChordFromChroma, detectRepeatingP
 import ChordDetailModal from './components/ChordDetailModal'
 import CurrentJamPanel from './components/CurrentJamPanel'
 import LoopStation from './components/LoopStation'
+import JamGuide from './components/JamGuide'
 import { useLoopEngine } from './services/loopEngine'
 import settingIcon from './assets/setting-icon.png'
 
@@ -658,6 +659,15 @@ export default function App() {
         </button>
         {showTuner && <div className="border-t border-border"><Tuner /></div>}
       </div>
+
+      {/* ── Jam Guide — bottom dock (Roadmap) ── */}
+      <JamGuide
+        detectedProgression={detectedProgression}
+        keyInfo={effectiveKey}
+        chordHistory={chordHistory}
+        bpm={bpm}
+        currentChord={currentChord}
+      />
     </div>
   )
 }
