@@ -102,6 +102,16 @@ When the user manually switches mode (the documented K-S limitation — by desig
 
 Knowledgebase work runs as **looped sessions**: `/kb-expand` does exactly one style × instrument cell (research → author → validate → commit), driven by the queue in `docs/kb-backlog.md`. Tranches run on a dedicated branch — e.g. an hourly `/loop /kb-expand` for a working day — and **end with a pull request** so a whole tranche is reviewed in one place. First tranche (started 2026-06-12, branch `kb-expansion`): Session 0 bootstrap + the first guitar style cells, hourly for 8 hours, PR to `main` at the end.
 
+## How we build it — the ensemble
+
+The work is carried by a six-agent team that collaborates through files (a shared ledger + the repo), conducted by one scheduled loop. Full design in [`docs/agents/`](docs/agents/):
+
+- [`ROSTER.md`](docs/agents/ROSTER.md) — the six agents, their domains, file ownership, and cadence weights: 🎼 Maestro (orchestrator), 🎓 Professor (music & pedagogy), 🔧 Luthier (engineering), 🎨 Muse (design & UX), 🔍 Critic (the review gate), 📣 Herald (open-source & community).
+- [`PROTOCOL.md`](docs/agents/PROTOCOL.md) — how they collaborate: the task-locking rule that prevents file conflicts, the `backlog→ready→claimed→in-review→done` lifecycle, the appointment algorithm, scheduling (schedule the conductor, not the band), and PRs.
+- [`LEDGER.md`](docs/agents/LEDGER.md) — the live task board, seeded with the `sprint-jam-guide` starter sprint.
+
+**Run it:** `/jam-loop` advances one orchestrated iteration (Maestro appoints → workers build → Critic gates → reconcile + commit). Schedule it with `/loop 1h /jam-loop` (session) or `/schedule` (durable). `/kb-expand` remains the single-domain content fast-path (Professor solo).
+
 ### Definition of "next level" (success criteria)
 
 - A jammer can glance at the app and call the loop in numbers ("it's a 1-5-4").
