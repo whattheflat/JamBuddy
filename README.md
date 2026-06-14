@@ -1,134 +1,122 @@
-# WhatTheFlat
+# JamBuddy
 
-Real-time key and chord detection for musicians. Play guitar, bass, piano, or any instrument into your microphone and WhatTheFlat will identify the key you're in, the chords you're playing, and suggest progressions. Runs fully offline as a native desktop app.
+**Hear the jam, learn the jam.** JamBuddy listens through your microphone, figures out the key and chords you're playing in real time, then shows you *how to play over them* — and helps you level up while you do it.
 
-## Features
+It started as a live key/chord detector (you may know it as *WhatTheFlat*). It's growing into an open, contributable **learning platform** for the player who can already survive a jam and wants to make it better.
 
-- Real-time chord detection from live audio (guitar, bass, piano, full band)
-- Automatic key detection with top-3 candidate display — click to lock
-- Chord history and repeating progression detection
-- Roman numeral analysis relative to detected key
-- Fretboard visualiser showing safe notes and chord tones
-- Beginner / Advanced modes
-- Manual key lock for jam sessions
-- Supports borrowed/chromatic chords (e.g. D7 in A minor) in Advanced mode
-- Fully offline — no internet connection required
+---
 
-## Tech Stack
+## The idea: detect → guide → level up
 
-| | |
-|---|---|
-| **App shell** | Electron |
-| **UI** | React 18, Tailwind CSS, Vite |
-| **Audio** | Web Audio API, [Pitchy](https://github.com/ianprime0509/pitchy) (McLeod pitch detection) |
-| **Music theory** | Custom JS — Krumhansl-Schmuckler key detection, chroma-based chord matching |
+1. **Detect.** Point your mic at a guitar, piano, or a whole band. JamBuddy identifies the **key** and the **chords** as you play, finds the repeating **loop**, and reads it back in Roman numerals (ii–V–I, I–V–vi–IV).
 
-### Dependencies (`frontend/package.json`)
+2. **Guide.** Once it knows your loop, the **Roadmap Jam Guide** lays it out as an improv highway synced to what you're playing: **guide tones** (the 3rds and 7ths that carry the harmony), **voice-leading rails** showing how each chord resolves into the next, the **solo scale** to blow over each station, and the **chord voicings** to grab — all in your detected key, with a playhead tracking where the loop is.
 
-**Runtime**
-- `react` / `react-dom` — UI
-- `pitchy` — pitch detection
+3. **Level up.** Style packs turn the same ii–V–I into *jazz* vs *bossa* vs *funk* — genuinely different voicings, rhythms, and improv advice — so you don't just play the changes, you learn the language. This is the on-ramp to the wider **Learn** direction (drills and detection-powered feedback) described in [`GOAL.md`](GOAL.md).
 
-**Dev / build**
-- `electron` — desktop runtime
-- `electron-builder` — installer packaging
-- `vite` + `@vitejs/plugin-react` — bundler
-- `tailwindcss` + `autoprefixer` + `postcss` — styling
-- `concurrently` — run Vite + Electron together in dev
+---
 
-## Development
+## What works today vs. what's in progress
+
+This is an honest snapshot — it's an active project.
+
+**Working today**
+
+- **Real-time key detection** with top-3 candidate chips (click to lock) — works for guitar and piano.
+- **Real-time chord detection** from live audio, with chord history and repeating-progression detection.
+- **Roadmap Jam Guide** panel: matches your detected loop to a style progression and renders guide tones, voice-leading rails, solo-scale labels, and chord-voicing thumbnails synced to the loop position.
+- **8 guitar style packs** in the knowledgebase — jazz, blues, rock, bossa nova, funk, reggae, country, and R&B (gospel landing next).
+- **Fretboard and piano** visualisers that colour chord tones, pentatonic, and scale notes.
+- **Chromatic tuner** and a **loop station** for capturing and replaying phrases.
+- **Fully offline** — all audio and detection run locally in the desktop window; no server, no network calls.
+
+**In progress**
+
+- **Piano and bass** style packs (guitar is the first instrument rolled out).
+- The **Progression Builder** — lay out and rearrange your own progression by hand (GOAL §G3).
+- **Detection-powered drills** — practice exercises and feedback that use the fact that the app can actually *hear* you (GOAL Part 2).
+
+---
+
+## What it looks like
+
+<!-- TODO: add a screenshot or GIF of the Roadmap Jam Guide tracking a live ii–V–I or 12-bar blues. -->
+<!-- Caption: "The Roadmap Jam Guide mid-jam — guide tones, voice-leading rails, and the next voicing, synced to the chord you're playing right now." -->
+
+_(Screenshot coming — the Roadmap panel mid-jam.)_
+
+---
+
+## Quickstart
+
+You'll need [Node.js](https://nodejs.org/) (18+) and a microphone.
 
 ```bash
-cd frontend
+git clone https://github.com/whattheflat/whattheflat.git
+cd whattheflat
 npm install
+
+# Desktop app (Vite dev server + Electron window, hot reload)
 npm run electron:dev
 ```
 
-Starts the Vite dev server and opens the Electron window simultaneously. The window connects to `localhost:5173` and supports hot reload.
-
-## Building an Installer
-
-Add app icons to `frontend/assets/` first:
-- `icon.ico` — Windows
-- `icon.icns` — macOS
-- `icon.png` — Linux (256×256 minimum)
-
-Then build:
+Prefer the browser? Run the renderer on its own (no Electron shell):
 
 ```bash
-cd frontend
-
-# Windows installer (NSIS)
-npm run electron:build:win
-
-# macOS DMG
-npm run electron:build:mac
-
-# Linux AppImage
-npm run electron:build:linux
+npm run dev    # then open http://localhost:5173
 ```
 
-Output is placed in `frontend/release/`.
+**To see the magic:** grant **microphone permission** when prompted, then play a **recognized loop** — a **ii–V–I** or a **12-bar blues** are the easiest ways to light up the Roadmap Jam Guide. JamBuddy needs to hear the loop repeat a couple of times to lock the key and match the progression.
 
-## Releasing / Tagging
-
-To create a GitHub release and trigger the CI build pipeline, create an annotated tag and push it to origin. The release workflow runs on tags matching `v*` (for example `v0.6.1`).
-
-Local tagging example:
+### Building installers
 
 ```bash
-# update package.json version first if desired
-git tag -a v0.6.1 -m "Release v0.6.1"
-git push origin v0.6.1
+npm run electron:build:win     # Windows NSIS installer  → release/
+npm run electron:build:mac     # macOS DMG               → release/
+npm run electron:build:linux   # Linux AppImage          → release/
 ```
 
-What the GitHub Action does (`.github/workflows/release.yml`):
+---
 
-- Listens for pushed tags `v*` and runs a matrix build across Windows, macOS and Linux.
-- macOS is built as a universal binary (`--universal`) so a single DMG supports both Intel and Apple Silicon.
-- Each matrix job builds the installer using `electron-builder`, uploads its artifacts, and a final `publish` job aggregates all artifacts into one GitHub release.
+## Contributing — add a style without deep coding
 
-If you prefer to run builds locally before tagging, use the npm scripts in the repository root:
+The style packs are **data, not code**. If you're a musician who knows how a style is voiced and played, you can add one by filling in a structured data file — no audio or detection internals required.
 
-```bash
-# Windows NSIS
-npm run electron:build:win
+- The data contract lives in [`src/data/kb/SCHEMA.md`](src/data/kb/SCHEMA.md): progressions as key-agnostic scale degrees, plus 2+ idiomatic "ways to play" each (voicings, comping, improv). One entry renders in all 12 keys.
+- An **assisted path** is available: the `/kb-expand` workflow researches, drafts, and validates one style cell at a time, so you can start from a scaffold rather than a blank file.
+- Every contribution passes a **validator quality gate** (`node scripts/validate-kb.mjs`) that mechanically checks each voicing actually contains the chord's tones — that's the bar that keeps the knowledgebase trustworthy.
 
-# macOS DMG (universal)
-npm run electron:build:mac -- --universal
+A full step-by-step **`CONTRIBUTING.md`** guide is **coming** (tracked as task H-02). Until then, `SCHEMA.md` is the source of truth, and the [jazz pack](src/data/kb/jazz) is the gold-standard example to imitate.
 
-# Linux AppImage
-npm run electron:build:linux
-```
+---
 
-CI notes / troubleshooting
-- The workflow uploads artifacts from `release/` into the release. Ensure `package.json` build `directories.output` matches the workflow's expected `release/` folder.
-- If mac packaging for x64 on ARM-hosted runners fails, switch to `--universal` (already configured) or build x64 on an Intel runner.
-- To test the workflow locally, consider using `nektos/act` or push a temporary tag like `vtest`.
+## How it's built — the ensemble
 
-## Design Tokens
+JamBuddy is built by a six-agent team (Maestro, Professor, Luthier, Muse, Critic, Herald) that collaborates entirely through files — a shared ledger and the repo — conducted by one scheduled loop. If you want to understand how the project plans and ships work, start in [`docs/agents/`](docs/agents/):
 
-All colors are defined in `frontend/tailwind.config.js` and can be referenced by name in any component.
+- [`ROSTER.md`](docs/agents/ROSTER.md) — the six agents and their domains.
+- [`PROTOCOL.md`](docs/agents/PROTOCOL.md) — how they collaborate (task locking, review gate, scheduling).
+- [`LEDGER.md`](docs/agents/LEDGER.md) — the live task board.
 
-| Token | Hex | Usage |
-|---|---|---|
-| `surface` | `#0f0f0f` | Page / app background |
-| `panel` | `#1a1a1a` | Cards, panels, dialogs |
-| `border` | `#2a2a2a` | Borders, dividers, muted backgrounds |
-| `accent` | `#a855f7` | Primary interactive color (purple) |
-| `amber` | `#f59e0b` | Roman numerals, secondary highlights |
-| *(base text)* | `#f5f5f5` | Default body text |
+The product north star and full roadmap are in [`GOAL.md`](GOAL.md).
 
-Tailwind usage examples: `bg-surface`, `bg-panel`, `border-border`, `text-accent`, `bg-accent/20` (20% opacity).
+---
 
-## How It Works
+## Tech & how detection works
 
-All processing happens locally in the Electron window — no server, no network calls.
+| | |
+|---|---|
+| **App shell** | Electron (window host only — all logic runs in the renderer) |
+| **UI** | React, Tailwind CSS, Vite |
+| **Audio** | Web Audio API, [Pitchy](https://github.com/ianprime0509/pitchy) (McLeod pitch detection) |
+| **Music theory** | Custom JS — Krumhansl-Schmuckler key detection, harmonic-summation chroma chord matching |
 
-Audio is captured via the browser's Web Audio API and processed in two parallel paths:
+Two audio pipelines run in parallel: a fast **pitch path** (4096-sample FFT, McLeod autocorrelation) feeds Krumhansl-Schmuckler key detection over a voting window; a higher-resolution **chord path** (16384-sample FFT, ~2.7 Hz/bin) extracts a harmonic-summation chroma and matches it against chord templates. Architecture details are in [`CLAUDE.md`](CLAUDE.md).
 
-1. **Pitch path** — 4096-sample FFT with McLeod autocorrelation for fast single-note pitch detection. Feeds the Krumhansl-Schmuckler key detection algorithm, which votes over a rolling window of 12 detections and requires 9/12 agreement before committing to a key.
+> Note on modes: Krumhansl-Schmuckler distinguishes major vs. minor but not modes — Dorian and natural minor look the same to it. JamBuddy detects the tonal centre, and you pick the mode (the dropdown offers Dorian, Mixolydian, etc.). By design.
 
-2. **Chord path** — 16384-sample FFT (2.7 Hz/bin) with harmonic summation chroma extraction across 80–4000 Hz. The averaged chroma vector is matched against chord templates (major, minor, dom7, min7, dim, half-dim, aug, sus4, add9) using a weighted coverage score. Consecutive identical detections are required before a chord is committed, preventing transient false positives.
+---
 
-The top-3 key candidates are shown in real time as clickable chips. Locking a key in Beginner mode restricts chord matching to the 7 diatonic chords; Advanced mode allows chromatic/borrowed chords.
+## License
+
+No license file is set yet. Until one is added, all rights are reserved by the authors — please open an issue before reusing the code.
