@@ -30,7 +30,7 @@ const INSTRUMENTS = [
   { id: 'bass',   label: 'Bass',   icon: '🎵' },
 ]
 
-export default function JamGuide({ detectedProgression, keyInfo, chordHistory = [], bpm, currentChord }) {
+export default function JamGuide({ detectedProgression, keyInfo, chordHistory = [], bpm, currentChord, onFocusChord }) {
   const [open, setOpen] = useState(false)
 
   // Which instruments have at least one KB pack across the registry.
@@ -124,6 +124,7 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
       return {
         shape: chords[i]?.shape ?? null,
         rootPc,
+        quality: qualities[i] ?? 'maj',
         label: `${noteName}${suffix}`,
         rn: prog?.rn?.[i] ?? '',
       }
@@ -134,6 +135,21 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
   const [selectedStation, setSelectedStation] = useState(null)
   // Reset the selection whenever the loop or style changes underneath us.
   useEffect(() => { setSelectedStation(null) }, [match.id, match.style, instrument])
+
+  // ── Cross-link to the main Fretboard (D-03) ─────────────────────────────────
+  // When a station is selected, report its {rootPc, quality} upward so the
+  // Fretboard can light that chord's guide tones; clear (null) on deselect. The
+  // reset effect above sets selectedStation → null on loop/style/instrument
+  // change, which flows through here and clears the highlight too. Guarded so
+  // the component still works standalone (onFocusChord optional).
+  useEffect(() => {
+    if (!onFocusChord) return
+    const st = selectedStation != null ? stationVoicings[selectedStation] : null
+    onFocusChord(st ? { rootPc: st.rootPc, quality: st.quality } : null)
+  }, [selectedStation, stationVoicings, onFocusChord])
+
+  // Clear the Fretboard highlight when JamGuide unmounts.
+  useEffect(() => () => { onFocusChord?.(null) }, [onFocusChord])
 
   return (
     <div className="mb-3 bg-panel border border-border rounded-xl overflow-hidden">

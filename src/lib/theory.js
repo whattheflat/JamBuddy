@@ -260,28 +260,39 @@ function chordTonePcs(rootPc, quality) {
 /**
  * guideTones(rootPc, quality) → { third, seventh, root }
  *
- * The guide tones a soloist targets: a chord's 3rd and 7th. By CHORD_TYPES
- * interval ordering, index 1 is always the 3rd and (for a 7th chord) the last
- * interval is the 7th. For triads with no 7th there is no real guide 7th, so we
- * fall back to the 5th (the next most stable anchor) and flag it via
- * `hasSeventh: false` so a caller can label it honestly ("5th", not "7th").
+ * The guide tones a soloist targets: a chord's 3rd and 7th. Index 1 in every
+ * CHORD_TYPES interval set is the 3rd. A chord has a TRUE 7th only if its
+ * interval set contains 10 (m7) or 11 (M7) — NOT merely if it has 4 tones.
+ * When there is no real 7th (triads, and 4-tone non-7th chords like add9
+ * [0,2,4,7] or maj6/min6 [0,4,7,9]) we fall back to the 5th as the secondary
+ * anchor and flag `hasSeventh: false` so a caller labels it honestly ("5th",
+ * not "7th"). dim/dim7/aug have no perfect 5th, so they anchor on their ♭5/#5.
  *
  * Returns pitch classes (0–11) so the Roadmap TARGET lane can place dots in any
  * key. `root` is included as the third anchor the design's badges reference.
  *
- * Sanity (C major): guideTones(0,'maj7') → third 4 (E), seventh 11 (B).
- *                    guideTones(7,'dom7') → third 11 (B), seventh 5 (F).
- *                    guideTones(2,'min7') → third 5 (F), seventh 0 (C).
+ * Sanity (C): guideTones(0,'maj7') → third 4 (E), seventh 11 (B), hasSeventh:true.
+ *             guideTones(7,'dom7') → third 11 (B), seventh 5 (F), hasSeventh:true.
+ *             guideTones(2,'min7') → third 5 (F), seventh 0 (C), hasSeventh:true.
+ *             guideTones(0,'add9') → third 4 (E), seventh 7 (G=5th), hasSeventh:false.
+ *             guideTones(0,'maj6') / (0,'min6') → seventh 7 (G=5th), hasSeventh:false.
  */
 export function guideTones(rootPc, quality) {
   const type   = CHORD_TYPES[quality] ?? CHORD_TYPES.maj
   const r      = ((rootPc % 12) + 12) % 12
   const ints   = type.intervals
   const third  = (r + ints[1]) % 12                      // index 1 is always the 3rd
-  const hasSeventh = ints.length >= 4                    // CHORD_TYPES 7ths add a 4th tone
-  // 7th when present, else the 5th as the secondary anchor (index 2 = the 5th
-  // for every triad in CHORD_TYPES, which is what a triad soloist leans on).
-  const seventh = (r + ints[hasSeventh ? ints.length - 1 : 2]) % 12
+  // A chord has a TRUE 7th only if its interval set contains 10 (m7) or 11 (M7).
+  // `length >= 4` is wrong: add9 [0,2,4,7] and maj6/min6 [0,4,7,9] are 4-tone
+  // chords with NO seventh, so their secondary anchor must fall back to the 5th —
+  // never badge a 5th/6th as a "7". (add9 → hasSeventh:false, anchor=5th.)
+  const seventhInt = ints.find(i => i === 10 || i === 11)   // m7 / M7
+  const hasSeventh = seventhInt !== undefined
+  // Secondary anchor: the true 7th when present; otherwise the perfect 5th (7).
+  // When no perfect 5th exists either (dim/dim7 carry a ♭5=6, aug carries a #5=8),
+  // anchor on whichever altered 5th the chord actually contains.
+  const fifthInt = ints.includes(7) ? 7 : ints.includes(6) ? 6 : ints.includes(8) ? 8 : 7
+  const seventh = (r + (hasSeventh ? seventhInt : fifthInt)) % 12
   return { third, seventh, root: r, hasSeventh }
 }
 

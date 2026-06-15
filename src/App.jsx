@@ -61,6 +61,13 @@ export default function App() {
   const [showDrumView, setShowDrumView] = useState(false)
   const [monoColor, setMonoColor]   = useState(() => loadStored('wtf_monoColor', false))
 
+  // ── Jam Guide → Fretboard cross-link (D-03) ──────────────────────────────────
+  // When a Roadmap station is tapped, JamGuide reports its {rootPc, quality}
+  // here and the main Fretboard highlights that chord's guide tones (3rd/7th).
+  // null = no station focused (Fretboard renders normally). Purely UI state —
+  // NOT read by any audio callback, so it stays out of the ref-sync contract.
+  const [jamFocusChord, setJamFocusChord] = useState(null)  // { rootPc, quality } | null
+
   // ── Mic permission error ──────────────────────────────────────────────────────
   const [micError, setMicError] = useState(null)
 
@@ -569,7 +576,7 @@ export default function App() {
       {/* ── Instrument + progressions row ── */}
       <div className="flex gap-3 mb-3 items-stretch">
         <div className="w-full lg:w-[70%] min-w-0">
-          {instrument === 'guitar' && <Fretboard keyInfo={effectiveKey} currentChord={currentChord} pentatonicOnly={false} monoColor={monoColor} />}
+          {instrument === 'guitar' && <Fretboard keyInfo={effectiveKey} currentChord={currentChord} pentatonicOnly={false} monoColor={monoColor} jamFocusChord={jamFocusChord} />}
           {instrument === 'bass'   && <BassFretboard keyInfo={effectiveKey} currentChord={currentChord} monoColor={monoColor} />}
           {instrument === 'piano'  && <Piano keyInfo={effectiveKey} currentChord={currentChord} monoColor={monoColor} />}
         </div>
@@ -667,6 +674,7 @@ export default function App() {
         chordHistory={chordHistory}
         bpm={bpm}
         currentChord={currentChord}
+        onFocusChord={setJamFocusChord}
       />
     </div>
   )
