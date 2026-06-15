@@ -27,6 +27,9 @@ import rnbGuitar from './rnb/guitar.js'
 import gospelMeta from './gospel/meta.js'
 import gospelProgressions from './gospel/progressions.js'
 import gospelGuitar from './gospel/guitar.js'
+import popMeta from './pop/meta.js'
+import popProgressions from './pop/progressions.js'
+import popGuitar from './pop/guitar.js'
 
 export default {
   jazz: {
@@ -73,5 +76,10 @@ export default {
     meta: gospelMeta,
     progressions: gospelProgressions,
     instruments: { guitar: gospelGuitar },
+  },
+  pop: {
+    meta: popMeta,
+    progressions: popProgressions,
+    instruments: { guitar: popGuitar },
   },
 }
