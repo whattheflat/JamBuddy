@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: The roadmap & vision (GOAL.md)
+    url: https://github.com/whattheflat/whattheflat/blob/main/GOAL.md
+    about: Where JamBuddy is headed — read this before proposing a big feature.
+  - name: How to contribute a style (CONTRIBUTING.md)
+    url: https://github.com/whattheflat/whattheflat/blob/main/CONTRIBUTING.md
+    about: Add a genre to the knowledgebase without deep coding.

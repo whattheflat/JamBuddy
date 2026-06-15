@@ -235,6 +235,168 @@ export function getChordsInKey(root, mode) {
   return scale.map((degree, i) => noteName(rootIdx + degree) + qualities[i])
 }
 
+// ─── Jam Guide: derived improv theory (L-01b) ─────────────────────────────────
+//
+// Three additive, pure helpers that feed the Roadmap Jam Guide. They are
+// key-agnostic: chords are described as a pitch class (0–11) + a CHORD_TYPES
+// quality key (e.g. 'min7', 'dom7', 'maj7', 'half_dim'), exactly the shape the
+// KB progression data already uses (`degrees` + `qualities`). They reuse
+// CHORD_TYPES / getChordTones rather than re-deriving intervals.
+//
+// Chord arg shape: { root, quality } where root is a pitch class 0–11 and
+// quality is a CHORD_TYPES key. This matches the KB station model
+// ({ degrees[i], qualities[i] }) so a caller maps a station to a chord with no
+// string parsing.
+
+// Internal: resolve a chord's pitch-class tone set from a CHORD_TYPES key.
+// Returns the intervals mapped to absolute pitch classes, preserving the
+// CHORD_TYPES interval order (index 0 = root, 1 = 3rd, last = 7th when present).
+function chordTonePcs(rootPc, quality) {
+  const type = CHORD_TYPES[quality] ?? CHORD_TYPES.maj
+  const r = ((rootPc % 12) + 12) % 12
+  return type.intervals.map(i => (r + i) % 12)
+}
+
+/**
+ * guideTones(rootPc, quality) → { third, seventh, root }
+ *
+ * The guide tones a soloist targets: a chord's 3rd and 7th. Index 1 in every
+ * CHORD_TYPES interval set is the 3rd. A chord has a TRUE 7th only if its
+ * interval set contains 10 (m7) or 11 (M7) — NOT merely if it has 4 tones.
+ * When there is no real 7th (triads, and 4-tone non-7th chords like add9
+ * [0,2,4,7] or maj6/min6 [0,4,7,9]) we fall back to the 5th as the secondary
+ * anchor and flag `hasSeventh: false` so a caller labels it honestly ("5th",
+ * not "7th"). dim/dim7/aug have no perfect 5th, so they anchor on their ♭5/#5.
+ *
+ * Returns pitch classes (0–11) so the Roadmap TARGET lane can place dots in any
+ * key. `root` is included as the third anchor the design's badges reference.
+ *
+ * Sanity (C): guideTones(0,'maj7') → third 4 (E), seventh 11 (B), hasSeventh:true.
+ *             guideTones(7,'dom7') → third 11 (B), seventh 5 (F), hasSeventh:true.
+ *             guideTones(2,'min7') → third 5 (F), seventh 0 (C), hasSeventh:true.
+ *             guideTones(0,'add9') → third 4 (E), seventh 7 (G=5th), hasSeventh:false.
+ *             guideTones(0,'maj6') / (0,'min6') → seventh 7 (G=5th), hasSeventh:false.
+ */
+export function guideTones(rootPc, quality) {
+  const type   = CHORD_TYPES[quality] ?? CHORD_TYPES.maj
+  const r      = ((rootPc % 12) + 12) % 12
+  const ints   = type.intervals
+  const third  = (r + ints[1]) % 12                      // index 1 is always the 3rd
+  // A chord has a TRUE 7th only if its interval set contains 10 (m7) or 11 (M7).
+  // `length >= 4` is wrong: add9 [0,2,4,7] and maj6/min6 [0,4,7,9] are 4-tone
+  // chords with NO seventh, so their secondary anchor must fall back to the 5th —
+  // never badge a 5th/6th as a "7". (add9 → hasSeventh:false, anchor=5th.)
+  const seventhInt = ints.find(i => i === 10 || i === 11)   // m7 / M7
+  const hasSeventh = seventhInt !== undefined
+  // Secondary anchor: the true 7th when present; otherwise the perfect 5th (7).
+  // When no perfect 5th exists either (dim/dim7 carry a ♭5=6, aug carries a #5=8),
+  // anchor on whichever altered 5th the chord actually contains.
+  const fifthInt = ints.includes(7) ? 7 : ints.includes(6) ? 6 : ints.includes(8) ? 8 : 7
+  const seventh = (r + (hasSeventh ? seventhInt : fifthInt)) % 12
+  return { third, seventh, root: r, hasSeventh }
+}
+
+/**
+ * voiceLeadingPairs(chordA, chordB) → [{ from, to, semitones }]
+ *
+ * The voice-leading rails between two adjacent stations. For each guide tone of
+ * chordA (its 3rd and 7th) it finds the nearest tone of chordB (chordB's full
+ * tone set) and returns the smallest signed semitone move (negative = falls,
+ * positive = rises). Only rails moving ≤2 semitones are kept — that is the
+ * "smooth voice leading" band; bigger leaps are not rails. A 0-semitone rail
+ * (a held common tone) is kept so the design can draw "B holds → next loop".
+ *
+ * Each chord is { root, quality } (pitch class + CHORD_TYPES key).
+ *
+ * Sanity — ii–V–I in C (the gold-standard rails):
+ *   Dm7 → G7 : 7th of Dm7 (C=0) → 3rd of G7 (B=11)  ⇒ { from:0,  to:11, semitones:-1 }
+ *   G7  → Cmaj7: 7th of G7 (F=5) → 3rd of Cmaj7 (E=4) ⇒ { from:5, to:4,  semitones:-1 }
+ * i.e. the classic 7→3 falls a half-step, proving C→B and F→E.
+ */
+export function voiceLeadingPairs(chordA, chordB) {
+  const a = guideTones(chordA.root, chordA.quality)
+  const targets = chordTonePcs(chordB.root, chordB.quality)
+
+  // smallest signed interval from pc x to pc y, in range (-6, 6]
+  const signedStep = (x, y) => {
+    let d = (((y - x) % 12) + 12) % 12
+    if (d > 6) d -= 12
+    return d
+  }
+
+  const rails = []
+  for (const from of [a.seventh, a.third]) {        // 7th first (the headline 7→3 rail)
+    let best = null
+    for (const to of targets) {
+      const semitones = signedStep(from, to)
+      if (Math.abs(semitones) > 2) continue          // only smooth moves are rails
+      if (best === null || Math.abs(semitones) < Math.abs(best.semitones)) {
+        best = { from, to, semitones }
+      }
+    }
+    if (best) rails.push(best)
+  }
+  return rails
+}
+
+// Default solo scale per chord quality (used when a KB pack didn't author an
+// improv.scales entry for a degree). Maps a CHORD_TYPES key → a SCALES mode.
+// 'locrian' is named here even though it isn't in SCALES (the KB references it
+// for half-diminished); intervals are provided so a caller never has to look it
+// up in SCALES for the half_dim case.
+const SOLO_SCALE_BY_QUALITY = {
+  maj:      'major',
+  maj7:     'major',       // Ionian; packs may upgrade to Lydian via improv.scales
+  maj6:     'major',
+  add9:     'major',
+  dom7:     'mixolydian',
+  min:      'dorian',
+  min7:     'dorian',
+  min6:     'dorian',
+  half_dim: 'locrian',
+  dim:      'diminished',
+  dim7:     'diminished',
+  aug:      'whole_tone',
+  sus4:     'mixolydian',
+  sus2:     'major',
+}
+
+// Locrian isn't in SCALES (no diatonic degree uses it); supply its intervals so
+// soloScale can return a complete { name, intervals } for half-diminished.
+const LOCRIAN_INTERVALS = [0, 1, 3, 5, 6, 8, 10]
+
+/**
+ * soloScale(quality, mode) → { name, intervals }
+ *
+ * The computed default scale to solo over a chord of the given quality — the
+ * fallback for packs that didn't author an improv.scales entry. Returns the
+ * same shape callers already get from SCALES (a relative interval set) plus its
+ * mode `name`, so the Roadmap SCALE lane can label it ("G mixolydian") and the
+ * fretboard can offset the intervals against the chord root.
+ *
+ * `mode` (the song's key mode, e.g. 'major'/'minor') is an optional context
+ * hint: a dominant chord in a minor key implies the ♭9 colour, so we nudge
+ * dom7 → phrygian dominant there; otherwise it is ignored. This keeps the
+ * default sensible without needing per-chord KB data.
+ *
+ * Sanity: soloScale('dom7')         → { name:'mixolydian', intervals:[0,2,4,5,7,9,10] }
+ *         soloScale('min7')         → { name:'dorian',     intervals:[0,2,3,5,7,9,10] }
+ *         soloScale('maj7')         → { name:'major',      intervals:[0,2,4,5,7,9,11] }
+ *         soloScale('half_dim')     → { name:'locrian',    intervals:[0,1,3,5,6,8,10] }
+ *         soloScale('dom7','minor') → phrygian-dominant intervals (♭9 over the V)
+ */
+export function soloScale(quality, mode) {
+  // Dominant in a minor key → Phrygian dominant (the ♭9/♭13 "V of i" sound).
+  if (quality === 'dom7' && mode === 'minor') {
+    return { name: 'phrygian_dominant', intervals: [0, 1, 4, 5, 7, 8, 10] }
+  }
+  const name = SOLO_SCALE_BY_QUALITY[quality] ?? 'major'
+  const intervals = name === 'locrian'
+    ? LOCRIAN_INTERVALS
+    : (SCALES[name] ?? SCALES.major)
+  return { name, intervals }
+}
+
 // ─── Progression suggestions ─────────────────────────────────────────────────
 
 export function getSuggestedProgressions(root, mode) {
