@@ -339,7 +339,15 @@ export function pianoVoicing(chord, opts = {}) {
   const style = BUILDERS[opts.style] ? opts.style : defaultStyle(quality)
 
   const base = BUILDERS[style](rootPc, quality)
-  const notes = placeVoicing(base, rootPc, opts.prev)
+  const placed = placeVoicing(base, rootPc, opts.prev)
+
+  // Dedupe ABSOLUTE notes: two voices can collide on one key (e.g. a forced
+  // rootless sus2 lands the suspended-2nd "3rd-slot" tone and the synthesized
+  // 9th on the same absolute key, pc 2 → notes [26,26,31]). A duplicate value
+  // would stack two highlights on one key in the renderer, so we drop the
+  // redundant collided note here — the single point every style/quality flows
+  // through — keeping the first occurrence. A no-op when nothing collides.
+  const notes = [...new Set(placed)]
 
   // pcs in the voiced order (low→high), deduped — what keys light up.
   const pcs = [...new Set(notes.map((n) => mod12(n)))]
