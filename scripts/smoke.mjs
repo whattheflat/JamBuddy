@@ -65,6 +65,12 @@ const kb = (await load('src/data/kb/index.js')).default
 const match = await load('src/lib/match.js')
 const { buildLoopIndex, matchLoopToProgression, findLoopPosition } = match
 
+const theory = await load('src/lib/theory.js')
+const { CHORD_TYPES } = theory
+
+const piano = await load('src/lib/piano.js')
+const { pianoVoicing, pianoVoicingChain, voicingToneSet, hasTrueSeventh } = piano
+
 // ─── 1. Registry integrity ────────────────────────────────────────────────────
 
 console.log('\nRegistry integrity:')
@@ -227,7 +233,168 @@ const rebase = (arr) => {
   })
 }
 
-// ─── 3. Summary + exit code ───────────────────────────────────────────────────
+// ─── 3. Piano voicing resolver (C-10) ─────────────────────────────────────────
+//
+// Exercise src/lib/piano.js across every CHORD_TYPES quality (all 14) at a
+// couple of roots, for each forced style + the default. Expected facts are
+// derived from the resolver/theory (voicingToneSet / hasTrueSeventh / the chord
+// intervals), never hardcoded as brittle note arrays.
+
+console.log('\nPiano resolver:')
+
+const QUALITIES = Object.keys(CHORD_TYPES)          // all 14
+const PIANO_ROOTS = [0, 7]                           // C and G
+const PIANO_STYLES = ['root', 'shell', 'rootlessA', 'rootlessB', undefined] // undefined = default
+const mod12 = (n) => (((n % 12) + 12) % 12)
+const styleName = (s) => s ?? 'default'
+
+check(`CHORD_TYPES exposes all 14 qualities for the piano sweep`, () => {
+  assert(QUALITIES.length === 14, `expected 14 CHORD_TYPES, got ${QUALITIES.length}`)
+})
+
+// --- 3a. Per (quality × root × style): valid shape, no wrong notes, 3rd & 7th --
+for (const quality of QUALITIES) {
+  const ints = CHORD_TYPES[quality].intervals
+  const hasReal3rd = ints.some((i) => i === 3 || i === 4)
+  // The "real 3rd" target pc: minor/major 3rd if present, else the suspension
+  // tone (sus2 → 2, sus4 → 5) that stands in the 3rd slot.
+  const susTone = ints[1] // sus2 → 2, sus4 → 5 (index-1 stand-in for the 3rd)
+  const trueSeventh = hasTrueSeventh(quality) // interval 10 or 11 present
+
+  for (const rootPc of PIANO_ROOTS) {
+    // expected 3rd-slot pc (absolute pc)
+    const third3 = mod12(rootPc + 3)
+    const third4 = mod12(rootPc + 4)
+    const susPc = mod12(rootPc + susTone)
+    const seventhInt = ints.find((i) => i === 10 || i === 11)
+    const seventhPc = seventhInt === undefined ? null : mod12(rootPc + seventhInt)
+
+    for (const style of PIANO_STYLES) {
+      const chord = { rootPc, quality }
+      const opts = style === undefined ? {} : { style }
+      const tag = `${quality}@${rootPc} [${styleName(style)}]`
+
+      check(`${tag}: valid voicing shape`, () => {
+        const v = pianoVoicing(chord, opts)
+        assert(v && typeof v === 'object', 'no voicing object')
+        assert(Array.isArray(v.notes) && v.notes.length > 0, 'notes must be a non-empty array')
+        assert(v.notes.every((n) => Number.isFinite(n)), 'notes must all be numbers')
+        assert(Array.isArray(v.pcs) && v.pcs.length > 0, 'pcs must be a non-empty array')
+        assert(typeof v.bass === 'number', 'bass must be a number')
+        assert(typeof v.style === 'string' && v.style.length > 0, 'style must be a non-empty string')
+        assert(typeof v.label === 'string' && v.label.length > 0, 'label must be a non-empty string')
+      })
+
+      check(`${tag}: no wrong notes (pcs ⊆ voicingToneSet)`, () => {
+        const v = pianoVoicing(chord, opts)
+        // Scope the legal-tone set to the voicing's ACTUAL produced style.
+        const legal = voicingToneSet({ rootPc, quality }, v.style)
+        for (const pc of v.pcs) {
+          assert(legal.has(pc), `pc ${pc} not in voicingToneSet(${quality}, ${v.style}) {${[...legal].sort((a, b) => a - b)}}`)
+        }
+      })
+
+      check(`${tag}: real 3rd (or suspension) present`, () => {
+        const v = pianoVoicing(chord, opts)
+        if (hasReal3rd) {
+          assert(v.pcs.includes(third3) || v.pcs.includes(third4),
+            `expected a 3rd (pc ${third3} or ${third4}) in pcs {${v.pcs}}`)
+        } else {
+          // sus2/sus4 — the 2 or 4 stands in the 3rd slot.
+          assert(v.pcs.includes(susPc),
+            `expected suspension tone pc ${susPc} in pcs {${v.pcs}}`)
+        }
+      })
+
+      check(`${tag}: true 7th present in shell/rootless`, () => {
+        const v = pianoVoicing(chord, opts)
+        const isSeventhVoicing = v.style === 'shell' || v.style === 'rootlessA' || v.style === 'rootlessB'
+        if (trueSeventh && isSeventhVoicing) {
+          assert(v.pcs.includes(seventhPc),
+            `${v.style} of a true-7th chord must include the 7th pc ${seventhPc}, got {${v.pcs}}`)
+        }
+      })
+
+      check(`${tag}: notes within [0,36] and bass == min(notes)`, () => {
+        const v = pianoVoicing(chord, opts)
+        assert(v.notes.every((n) => n >= 0 && n <= 36),
+          `notes ${JSON.stringify(v.notes)} out of [0,36]`)
+        assert(v.bass === Math.min(...v.notes),
+          `bass ${v.bass} ≠ min(notes) ${Math.min(...v.notes)}`)
+      })
+    }
+  }
+}
+
+// --- 3b. No duplicate absolute note within a single voicing (sus2 nit watch) ---
+// Sweep every quality × style (forced + default). A duplicate absolute note in
+// one voicing's `notes` is a defect surfaced as a ✗ (L-10 gate flagged a
+// forced-rootless sus2 collision). If the resolver was since deduped, this
+// passes. We report WHICH quality/style collides so it's visible.
+{
+  const dupes = []
+  for (const quality of QUALITIES) {
+    for (const rootPc of PIANO_ROOTS) {
+      for (const style of PIANO_STYLES) {
+        const opts = style === undefined ? {} : { style }
+        const v = pianoVoicing({ rootPc, quality }, opts)
+        if (v.notes.length !== new Set(v.notes).size) {
+          dupes.push(`${quality}@${rootPc} [${styleName(style)}] notes=${JSON.stringify(v.notes)}`)
+        }
+      }
+    }
+  }
+  check('no duplicate absolute note within any single voicing (all qualities × styles)', () => {
+    assert(dupes.length === 0,
+      `duplicate-note voicing(s) found: ${dupes.join('; ')}`)
+  })
+}
+
+// --- 3c. Determinism: same input → identical notes -----------------------------
+{
+  check('pianoVoicing is deterministic (same input → identical notes)', () => {
+    for (const quality of QUALITIES) {
+      for (const rootPc of PIANO_ROOTS) {
+        for (const style of PIANO_STYLES) {
+          const opts = style === undefined ? {} : { style }
+          const a = pianoVoicing({ rootPc, quality }, opts)
+          const b = pianoVoicing({ rootPc, quality }, opts)
+          assert(a.notes.join(',') === b.notes.join(','),
+            `non-deterministic notes for ${quality}@${rootPc} [${styleName(style)}]: ${a.notes} vs ${b.notes}`)
+        }
+      }
+    }
+  })
+}
+
+// --- 3d. Voice-leading sanity: chain pcs == per-chord unthreaded pcs ------------
+// Threading re-registers (slides whole shapes by octaves) but never changes the
+// pitch CONTENT — each chained voicing's pcs must equal the same chord voiced
+// alone (default style), as a set.
+{
+  const chords = [
+    { rootPc: 2, quality: 'min7' },  // Dm7
+    { rootPc: 7, quality: 'dom7' },  // G7
+    { rootPc: 0, quality: 'maj7' },  // Cmaj7
+  ]
+  const chain = pianoVoicingChain(chords)
+  const pcSet = (arr) => [...new Set(arr)].sort((a, b) => a - b).join(',')
+
+  check('pianoVoicingChain(ii–V–I) returns 3 voicings', () => {
+    assert(Array.isArray(chain) && chain.length === 3,
+      `expected 3 voicings, got ${Array.isArray(chain) ? chain.length : typeof chain}`)
+  })
+
+  check('chain pcs match the per-chord unthreaded pcs (threading never changes pitch content)', () => {
+    chords.forEach((chord, i) => {
+      const solo = pianoVoicing(chord) // same default style, no prev
+      assert(pcSet(chain[i].pcs) === pcSet(solo.pcs),
+        `chord ${i} (${chord.quality}@${chord.rootPc}): chain pcs {${pcSet(chain[i].pcs)}} ≠ unthreaded {${pcSet(solo.pcs)}}`)
+    })
+  })
+}
+
+// ─── 4. Summary + exit code ───────────────────────────────────────────────────
 
 const total = passed + failures.length
 console.log('')
