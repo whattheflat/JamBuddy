@@ -39,8 +39,9 @@ function GuitarTab({ chordName }) {
   }
   return (
     <div className="flex flex-col gap-5">
-      {/* Playable voicing browser (D-21) — browse + audition shapes. */}
-      {parsed && <VoicingBrowser rootPc={parsed.rootPc} quality={parsed.type} />}
+      {/* Playable voicing browser (D-21) — browse + audition shapes.
+          Instrument-scoped to this tab via `show` (task L-25). */}
+      {parsed && <VoicingBrowser rootPc={parsed.rootPc} quality={parsed.type} show="guitar" />}
 
       {/* Static grid kept as the fingering reference — it carries finger
           numbers and barre info the browser doesn't show. */}
@@ -89,8 +90,8 @@ function PianoTab({ chordName }) {
   return (
     <div className="flex flex-col gap-4">
       {/* Playable voicing browser (D-21) — parseChord's `type` maps 1:1 to the
-          browser's `quality` (CHORD_TYPES key). L-21. */}
-      {parsed && <VoicingBrowser rootPc={parsed.rootPc} quality={parsed.type} />}
+          browser's `quality` (CHORD_TYPES key). L-21. Piano-scoped via `show` (L-25). */}
+      {parsed && <VoicingBrowser rootPc={parsed.rootPc} quality={parsed.type} show="piano" />}
 
       {/* Technique cards kept below — the name/desc/tip text and LH/RH note
           breakdown are not covered by the browser. */}
