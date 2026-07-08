@@ -24,6 +24,9 @@
 //   rootPc  — chord root pitch class 0–11 (default 0 = C)
 //   quality — CHORD_TYPES key; unknown values fall back to 'maj'
 //             (matching voicings.js / piano.js behaviour)
+//   show    — 'guitar' | 'piano' | 'both' (default 'both', task D-23): which
+//             instrument row(s) to render. Any other value falls back to both,
+//             so every pre-existing mount renders identically with no prop.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ChordDiagram from './ChordDiagram'
@@ -122,10 +125,18 @@ function SectionHeading({ children }) {
 
 // ─── The browser ──────────────────────────────────────────────────────────────
 
-export default function VoicingBrowser({ rootPc = 0, quality = 'maj' }) {
+export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'both' }) {
   const pc = mod12(Number.isFinite(rootPc) ? rootPc : 0)
   const name = chordName(pc, quality)
   const chordKey = `${pc}:${quality}`
+
+  // Row gating (D-23). 'guitar' hides the piano row, 'piano' hides the guitar
+  // row, anything else (incl. the 'both' default) shows both — so at least one
+  // row ALWAYS renders, and the mic-feedback microcopy below stays with it.
+  // Hooks stay unconditional; the shared stop-handle discipline (stopCurrent on
+  // chip switch / chord change / unmount) is untouched by hiding a row.
+  const showGuitar = show !== 'piano'
+  const showPiano = show !== 'guitar'
 
   const guitarShapes = useMemo(() => matchingShapes(quality, pc), [quality, pc])
   const pianoOptions = useMemo(
@@ -189,6 +200,7 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj' }) {
   return (
     <div className="flex w-full min-w-0 flex-wrap gap-2">
       {/* ── Guitar row ── */}
+      {showGuitar && (
       <section
         aria-label={`Guitar voicings for ${name}`}
         className="min-w-[240px] flex-1 basis-[300px] rounded-lg border border-border bg-panel p-3"
@@ -240,8 +252,10 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj' }) {
           </>
         )}
       </section>
+      )}
 
       {/* ── Piano row ── */}
+      {showPiano && (
       <section
         aria-label={`Piano voicings for ${name}`}
         className="min-w-[240px] flex-1 basis-[300px] rounded-lg border border-border bg-panel p-3"
@@ -283,8 +297,10 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj' }) {
           <MiniPiano voicing={{ ...selectedPiano.voicing, rootPc: pc }} size="thumb" />
         </div>
       </section>
+      )}
 
-      {/* Mic-feedback caveat, per the L-20 header + D-20 §3 (microcopy tier). */}
+      {/* Mic-feedback caveat, per the L-20 header + D-20 §3 (microcopy tier).
+          At least one row always renders (see the gating above), so this stays. */}
       <p className="w-full basis-full text-[11px] text-gray-500">
         Previews play through your speakers — while the mic is live, detection may
         hear them.

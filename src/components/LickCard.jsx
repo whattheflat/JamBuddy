@@ -12,8 +12,9 @@
 // spaced columns in `tab` order — no bars, beams or durations are invented.
 //
 // Column rule: each note takes the next column, EXCEPT a note tagged
-// `double-stop`, which stacks into the PREVIOUS note's column (unless it is on
-// the same string, where stacking would overlap — then it takes a new column).
+// `double-stop`, which stacks into the PREVIOUS note's column — unless ANY note
+// already placed in that column is on the same string (stacking would overlap
+// exactly), in which case it takes a new column.
 //
 // Technique glyphs (amber, the established secondary-tone colour):
 //   hammer-on  → slur arc from the previous note + italic "h" above
@@ -95,9 +96,13 @@ export function layoutTab(tab) {
   let col = -1
   for (let i = 0; i < clean.length; i++) {
     const n = clean[i]
-    const prev = notes[i - 1]
-    // double-stop stacks into the previous column — unless same string (overlap).
-    const stacks = i > 0 && n.technique === 'double-stop' && prev.string !== n.string
+    // double-stop stacks into the previous column — unless ANY note already
+    // placed there shares this string (a ≥3-note stack can repeat the string of
+    // a non-adjacent same-column note, which would overlap exactly — D-23).
+    const stacks =
+      i > 0 &&
+      n.technique === 'double-stop' &&
+      !notes.some((m) => m.col === col && m.string === n.string)
     if (!stacks) col++
     const ghost = n.technique === 'ghost-note'
     notes.push({
