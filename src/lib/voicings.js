@@ -561,3 +561,7 @@ export function getPianoTechniques(chordName) {
 }
 
 export { parseChord }
+
+// D-21: expose the raw shape library for the VoicingBrowser (read-only consumer —
+// it renders shapes via ChordDiagram and plays them via chordAudio.guitarShapeToNotes).
+export { GUITAR_SHAPES }
