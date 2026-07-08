@@ -264,7 +264,7 @@ export function guitarShapeToNotes(shape, opts = {}) {
  * Simple fallback when all you have is a bare pitch-class set (e.g. a detected
  * chord's tones, no voicing). Stacks the pcs ASCENDING from the first pc, which
  * is treated as the bass: each subsequent pc lands in the nearest position
- * above the previous note — so [7, 11, 5] plays G3-B3-F4, a real shell, not a
+ * above the previous note — so [7, 11, 5] plays G4-B4-F5, a real shell, not a
  * scrambled cluster. `octave` places the bass (4 = the octave starting at
  * C4 = middle C; default 4; piano.js note = (octave − 3) * 12 + pc).
  *

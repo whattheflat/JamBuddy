@@ -504,8 +504,11 @@ export function getGuitarVoicings(chordName) {
       continue
     }
 
-    // barre shape: compute rootFret on rootStr
-    const strIdx = shape.rootStr - 1  // 0=s6 … 5=s1
+    // barre shape: compute rootFret on rootStr.
+    // OPEN is ordered [s6 … s1] and rootStr is 1-indexed with 6 = low E,
+    // so string N lives at index 6 - N (same convention as ChordDiagram.jsx
+    // and chordAudio.guitarShapeToNotes).
+    const strIdx = 6 - shape.rootStr  // 0=s6 … 5=s1
     const openPc = OPEN[strIdx]
     let rootFret = (rootPc - openPc + 12) % 12
 
