@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import ChordBox from './ChordBox'
 import MiniPiano from './MiniPiano'
+import VoicingBrowser from './VoicingBrowser'
 import { getGuitarVoicings, getPianoTechniques, parseChord } from '../lib/voicings'
 import { CHORD_TYPES, NOTES, getChordsInKey, toRomanNumeral, getSuggestedProgressions } from '../lib/theory'
 import { FAMOUS_PROGRESSIONS, progressionInKey, getChordSubstitutions, CHORD_PLAYBOOK } from '../lib/education'
@@ -29,36 +30,49 @@ function chordDisplayName(root, typeKey) {
 }
 
 function GuitarTab({ chordName }) {
+  // parseChord's `type` is a CHORD_TYPES key — exactly VoicingBrowser's
+  // `quality` prop (same mapping PianoTab/ExploreTab already rely on). L-21.
+  const parsed = parseChord(chordName)
   const voicings = getGuitarVoicings(chordName)
-  if (!voicings.length) {
+  if (!parsed && !voicings.length) {
     return <p className="text-gray-500 text-sm text-center py-8">No guitar voicings found for {chordName}.</p>
   }
   return (
-    <div>
-      <p className="text-xs text-gray-500 mb-4">
-        Click any voicing to learn it. Purple = chord tones. Finger numbers inside dots (1=index, 4=pinky).
-        Barre chords show the fret number on the left.
-      </p>
-      <div className="flex flex-wrap gap-6 justify-start">
-        {voicings.map((v, i) => (
-          <div key={i} className="flex flex-col items-center gap-1 p-3 rounded-xl bg-surface border border-border hover:border-accent/40 transition-colors">
-            <ChordBox
-              frets={v.frets}
-              fingers={v.fingers}
-              barre={v.barre}
-              baseFret={v.baseFret}
-            />
-            <p className="text-[11px] text-gray-400 text-center mt-1 max-w-[120px] leading-tight">{v.label}</p>
+    <div className="flex flex-col gap-5">
+      {/* Playable voicing browser (D-21) — browse + audition shapes. */}
+      {parsed && <VoicingBrowser rootPc={parsed.rootPc} quality={parsed.type} />}
+
+      {/* Static grid kept as the fingering reference — it carries finger
+          numbers and barre info the browser doesn't show. */}
+      {voicings.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-gray-600 mb-2">More grips — fingering reference</p>
+          <p className="text-xs text-gray-500 mb-4">
+            Click any voicing to learn it. Purple = chord tones. Finger numbers inside dots (1=index, 4=pinky).
+            Barre chords show the fret number on the left.
+          </p>
+          <div className="flex flex-wrap gap-6 justify-start">
+            {voicings.map((v, i) => (
+              <div key={i} className="flex flex-col items-center gap-1 p-3 rounded-xl bg-surface border border-border hover:border-accent/40 transition-colors">
+                <ChordBox
+                  frets={v.frets}
+                  fingers={v.fingers}
+                  barre={v.barre}
+                  baseFret={v.baseFret}
+                />
+                <p className="text-[11px] text-gray-400 text-center mt-1 max-w-[120px] leading-tight">{v.label}</p>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="mt-4 p-3 rounded-lg bg-surface border border-border">
-        <p className="text-xs text-gray-500">
-          <span className="text-accent font-semibold">Pro tip:</span> Learn the E-shape and A-shape barres first
-          — they cover all 12 roots. Then add open voicings for the keys you play in most.
-          High-fret voicings (above fret 7) work great as jazz comping shapes in a band mix.
-        </p>
-      </div>
+          <div className="mt-4 p-3 rounded-lg bg-surface border border-border">
+            <p className="text-xs text-gray-500">
+              <span className="text-accent font-semibold">Pro tip:</span> Learn the E-shape and A-shape barres first
+              — they cover all 12 roots. Then add open voicings for the keys you play in most.
+              High-fret voicings (above fret 7) work great as jazz comping shapes in a band mix.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -68,17 +82,28 @@ function PianoTab({ chordName }) {
   const techniques = getPianoTechniques(chordName)
   const rootPc = parsed?.rootPc ?? 0
 
-  if (!techniques.length) {
+  if (!parsed && !techniques.length) {
     return <p className="text-gray-500 text-sm text-center py-8">No piano techniques for {chordName}.</p>
   }
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Playable voicing browser (D-21) — parseChord's `type` maps 1:1 to the
+          browser's `quality` (CHORD_TYPES key). L-21. */}
+      {parsed && <VoicingBrowser rootPc={parsed.rootPc} quality={parsed.type} />}
+
+      {/* Technique cards kept below — the name/desc/tip text and LH/RH note
+          breakdown are not covered by the browser. */}
+      {techniques.length > 0 && (
+        <p className="text-[11px] uppercase tracking-wider text-gray-600 mt-1">Techniques — how to use it at the keys</p>
+      )}
+      {techniques.length > 0 && (
       <p className="text-xs text-gray-500">
         <span className="text-blue-400 font-semibold">Blue = Left hand</span> &nbsp;·&nbsp;
         <span className="text-accent font-semibold">Purple = Right hand</span> &nbsp;·&nbsp;
         R marks the root.
       </p>
+      )}
       {techniques.map((t, i) => (
         <div key={i} className="p-4 rounded-xl bg-surface border border-border hover:border-accent/30 transition-colors">
           <div className="flex flex-col lg:flex-row gap-4 items-start">

@@ -5,6 +5,7 @@ import { NOTES, CHORD_TYPES } from '../lib/theory'
 import RoadmapTrack from './RoadmapTrack'
 import ChordDiagram from './ChordDiagram'
 import MiniPiano from './MiniPiano'
+import VoicingBrowser from './VoicingBrowser'
 import { pianoVoicingChain } from '../lib/piano'
 
 // ─── JamGuide — the Roadmap bottom dock ───────────────────────────────────────
@@ -412,6 +413,14 @@ function RoadmapAssembly({
                   label={`${selected.label}${selected.rn ? ` · ${selected.rn}` : ''}`}
                 />
               )}
+              {/* Browse + audition every voicing of this station's chord (L-21).
+                  Stations already carry {rootPc, quality} (L-11); the browser is
+                  fully self-contained (D-21) and wraps dock-friendly. Purely
+                  additive — the onFocusChord guide-tone contract above is
+                  untouched (it keys off selectedStation, not this render). */}
+              <div className="w-full">
+                <VoicingBrowser rootPc={selected.rootPc} quality={selected.quality} />
+              </div>
               <button
                 type="button"
                 onClick={() => onSelectStation(null)}
