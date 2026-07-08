@@ -28,6 +28,7 @@ import rnbGuitar from './rnb/guitar.js'
 import gospelMeta from './gospel/meta.js'
 import gospelProgressions from './gospel/progressions.js'
 import gospelGuitar from './gospel/guitar.js'
+import gospelPiano from './gospel/piano.js'
 import popMeta from './pop/meta.js'
 import popProgressions from './pop/progressions.js'
 import popGuitar from './pop/guitar.js'
@@ -76,7 +77,7 @@ export default {
   gospel: {
     meta: gospelMeta,
     progressions: gospelProgressions,
-    instruments: { guitar: gospelGuitar },
+    instruments: { guitar: gospelGuitar, piano: gospelPiano },
   },
   pop: {
     meta: popMeta,
