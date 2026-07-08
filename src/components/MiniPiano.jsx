@@ -19,6 +19,15 @@
 //     The root pitch class lights in accent purple; the bass key is ringed as the
 //     LH anchor; the other voicing tones light in a lighter purple.
 //
+//     Keyboard window (D-24): `size="thumb"` crops to the voicing's whole-octave
+//     span — from the octave-start at-or-below the lowest sounded key to the
+//     octave-end at-or-above the highest (plus the closing high C) — so a
+//     ≤1-octave shell renders ONE octave (~140px) instead of 2–3 (~266–390px)
+//     and Jam Guide station thumbs sit level with guitar ChordDiagram thumbs.
+//     `size="full"` keeps the wide C-anchored 2–3-octave window: the enlarged
+//     view benefits from register context, and its output stays byte-identical
+//     to the D-10 behaviour.
+//
 // Design tokens (tailwind.config.js): accent #a855f7. The SVG also uses the
 // established Piano/Fretboard note language (accent purple for the focal tone).
 
@@ -172,11 +181,23 @@ function VoicingPiano({ voicing, size }) {
   const rootPc = ((voicing?.rootPc ?? (notes.length ? notes[0] : 0)) % 12 + 12) % 12
   const bass = typeof voicing?.bass === 'number' ? voicing.bass : (notes.length ? Math.min(...notes) : null)
 
-  // Span enough octaves to contain the highest note (notes ≤ 36 → 3 octaves + the
-  // closing high C, so a value of 36 lands on the last white key).
+  // ── Keyboard window (D-24) ──────────────────────────────────────────────────
+  // `full`: the original wide window — C-anchored, 2–3 octaves, enough to contain
+  //         the highest note (byte-identical to the pre-D-24 output).
+  // `thumb`: crop to the voicing's whole-octave span. The window starts at the
+  //         octave C at-or-below the lowest sounded key (octStart) and runs whole
+  //         octaves until the closing C at-or-above the highest key, so white-key
+  //         geometry stays simple and a ≤1-octave voicing renders ONE octave.
+  //         The trailing high C is always drawn (window note octStart*12 +
+  //         OCTAVES*12), so a top note landing exactly on the octave boundary
+  //         still shows without adding a whole extra octave.
   const maxNote = notes.length ? Math.max(...notes) : 0
-  const OCTAVES = Math.min(3, Math.max(2, Math.ceil((maxNote + 1) / 12)))
-  // White keys: OCTAVES full octaves + 1 trailing C so the top octave's C (e.g. 36) shows.
+  const minNote = notes.length ? Math.min(...notes) : 0
+  const octStart = isFull ? 0 : Math.floor(minNote / 12)
+  const OCTAVES = isFull
+    ? Math.min(3, Math.max(2, Math.ceil((maxNote + 1) / 12)))
+    : Math.max(1, Math.ceil((maxNote - octStart * 12) / 12))
+  // White keys: OCTAVES full octaves + 1 trailing C closing the top octave.
   const TOTAL_WHITES = WHITE_PCS.length * OCTAVES + 1
   const scale = isFull ? 1 : 0.8
   const baseW = WW * TOTAL_WHITES + 2
@@ -195,13 +216,15 @@ function VoicingPiano({ voicing, size }) {
     }
   }
 
-  // White keys across OCTAVES octaves + trailing C.
+  // White keys across OCTAVES octaves + trailing C. `oct` is window-relative
+  // (drives x geometry); absNote adds octStart so highlights land on the right
+  // keys inside a cropped window.
   const whites = []
   for (let oct = 0; oct < OCTAVES; oct++) {
     for (let wi = 0; wi < WHITE_PCS.length; wi++) {
       const pc = WHITE_PCS[wi]
       const absWi = oct * WHITE_PCS.length + wi
-      const absNote = oct * 12 + pc       // absolute semitone of this white key
+      const absNote = (octStart + oct) * 12 + pc  // absolute semitone of this white key
       const x = absWi * WW + 1
       whites.push({ x, absWi, absNote, hl: styleFor(absNote) })
     }
@@ -209,7 +232,7 @@ function VoicingPiano({ voicing, size }) {
   // Trailing high C (top of the renderable window, e.g. note 36 when OCTAVES=3).
   {
     const absWi = OCTAVES * WHITE_PCS.length
-    const absNote = OCTAVES * 12
+    const absNote = (octStart + OCTAVES) * 12
     whites.push({ x: absWi * WW + 1, absWi, absNote, hl: styleFor(absNote) })
   }
 
@@ -218,7 +241,7 @@ function VoicingPiano({ voicing, size }) {
   for (let oct = 0; oct < OCTAVES; oct++) {
     for (const { pc, afterWhite } of BLACK_OFFSETS) {
       const absWi = oct * WHITE_PCS.length + afterWhite
-      const absNote = oct * 12 + pc
+      const absNote = (octStart + oct) * 12 + pc
       const x = absWi * WW + WW - BW / 2
       blacks.push({ x, pc, oct, absNote, hl: styleFor(absNote) })
     }
