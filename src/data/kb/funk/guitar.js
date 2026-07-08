@@ -185,4 +185,86 @@ export default {
       },
     ],
   },
+
+  // Structured licks (SCHEMA.md "Licks", task P-21). Written in the style's home
+  // positions (E for the dominant vamps, D dorian for the minor vamps) but
+  // key-agnostic in spirit — chordContext names the station.
+  // Every pitch hand-verified: s6=E s5=A s4=D s3=G s2=B s1=e (+fret, mod 12).
+  licks: [
+    {
+      // In E: root, ghost, ♭3 hammered to the 3, 5, ♭7, octave root — the
+      // dominant arpeggio with the blues grit built in, played staccato.
+      id: 'funk-nine-riff',
+      name: 'Single-note dominant riff',
+      level: 'foundation',
+      chordContext: 'over the I9 one-chord vamp',
+      techniques: ['ghost-note', 'hammer-on'],
+      source: 'in the style of the James Brown-band single-note riffs ("Sex Machine" lineage); Fundamental Changes funk guitar lessons',
+      tab: [
+        { string: 6, fret: 0 },                              // E — root, on the One
+        { string: 6, fret: 0, technique: 'ghost-note' },     // scratch — the 16th grid never stops
+        { string: 6, fret: 3 },                              // G — ♭3 grit
+        { string: 6, fret: 4, technique: 'hammer-on' },      // G♯ — the 3: the funk curl
+        { string: 5, fret: 2 },                              // B — 5
+        { string: 5, fret: 5 },                              // D — ♭7
+        { string: 5, fret: 7 },                              // E — octave root; shift up to grab it
+      ],
+    },
+    {
+      // In E (♭VII = D): chromatic climb D–D♯–E back to the One, answered by the
+      // 3+♭7 tritone stab straight out of the E9 grip (G♯+D).
+      id: 'funk-chromatic-snapback',
+      name: 'Chromatic snap-back to the One',
+      level: 'intermediate',
+      chordContext: '♭VII9 → I9, landing on the One',
+      techniques: ['chromatic-approach', 'double-stop'],
+      source: 'the E9→D9 vamp move ("Papa\'s Got a Brand New Bag" lineage); Fundamental Changes JB-style accent lessons',
+      tab: [
+        { string: 5, fret: 5 },                                  // D — the ♭VII's root
+        { string: 5, fret: 6, technique: 'chromatic-approach' }, // D♯ — passing
+        { string: 5, fret: 7 },                                  // E — the One
+        { string: 4, fret: 6 },                                  // G♯ — the 3, from the 9-grip
+        { string: 3, fret: 7, technique: 'double-stop' },        // D — the ♭7: tritone stab together
+      ],
+    },
+    {
+      // In D dorian: the ♭3+♭7 dyad (F+C) slid in from one fret below, answered
+      // by the root+11 dyad (D+G) — the m11 wash as two-note stabs — and a ghost.
+      id: 'funk-dorian-stabs',
+      name: 'Dorian double-stop stabs',
+      level: 'foundation',
+      chordContext: 'over the i7/i9 Dorian vamp',
+      techniques: ['double-stop', 'slide', 'ghost-note'],
+      source: 'in the style of the Meters\' dyad stabs ("Cissy Strut" lineage) and the Jimmy Nolen scratch vocabulary',
+      tab: [
+        { string: 2, fret: 5 },                              // E — one fret below F
+        { string: 3, fret: 4, technique: 'double-stop' },    // B — one fret below C (approach dyad)
+        { string: 3, fret: 5, technique: 'slide' },          // C — the ♭7
+        { string: 2, fret: 6, technique: 'double-stop' },    // F — the ♭3: the m7 pair lands
+        { string: 3, fret: 7 },                              // D — root
+        { string: 2, fret: 8, technique: 'double-stop' },    // G — the 11 on top: the m11 colour
+        { string: 3, fret: 7, technique: 'ghost-note' },     // scratch — keep the grid breathing
+      ],
+    },
+    {
+      // In D dorian: 1 ♭3 4 5 →6 5 ♭7 1 — a single-note vamp line that leans on
+      // the natural 6 (B over D), the note that makes Dorian sound like funk.
+      id: 'funk-dorian-six-line',
+      name: 'Dorian line leaning on the 6',
+      level: 'intermediate',
+      chordContext: 'over the i7–IV7 Dorian vamp',
+      techniques: ['slide', 'vibrato'],
+      source: 'the Dorian vamp language of "Chameleon" (Herbie Hancock) — see Ethan Hein\'s Chameleon analysis; a line in that style, not a transcription',
+      tab: [
+        { string: 5, fret: 5 },                          // D — 1
+        { string: 5, fret: 8 },                          // F — ♭3
+        { string: 4, fret: 5 },                          // G — 4
+        { string: 4, fret: 7 },                          // A — 5
+        { string: 4, fret: 9, technique: 'slide' },      // B — the natural 6, slid into
+        { string: 4, fret: 7 },                          // A — 5
+        { string: 3, fret: 5 },                          // C — ♭7
+        { string: 3, fret: 7, technique: 'vibrato' },    // D — octave home
+      ],
+    },
+  ],
 }

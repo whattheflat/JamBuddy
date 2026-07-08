@@ -261,4 +261,90 @@ export default {
       },
     ],
   },
+
+  // Structured licks (SCHEMA.md "Licks", task P-21). Written over a ii–V–I in C
+  // (Dm7–G7–Cmaj7) but key-agnostic in spirit — chordContext names the station.
+  // Every pitch hand-verified: s6=E s5=A s4=D s3=G s2=B s1=e (+fret, mod 12).
+  licks: [
+    {
+      // In D dorian: D E F G E C D — degrees 1 2 ♭3 4 2 ♭7 1 of the ii7.
+      id: 'jazz-the-lick',
+      name: 'The Lick',
+      level: 'foundation',
+      chordContext: 'over the ii7',
+      techniques: ['vibrato'],
+      source: 'the most famous ii-chord cliché in jazz — Wikipedia "The Lick"; Alex Heitlinger\'s 2011 supercut',
+      tab: [
+        { string: 5, fret: 5 },                          // D — 1
+        { string: 4, fret: 2 },                          // E — 2
+        { string: 4, fret: 3 },                          // F — ♭3
+        { string: 4, fret: 5 },                          // G — 4
+        { string: 4, fret: 2 },                          // E — 2
+        { string: 5, fret: 3 },                          // C — ♭7
+        { string: 5, fret: 5, technique: 'vibrato' },    // D — home
+      ],
+    },
+    {
+      // In C: Dm7 arpeggio (D F A C), G7 guide tones (B F), then the bebop
+      // enclosure F–D♯–E — above diatonically, below chromatically — onto the
+      // Imaj7's 3rd on the downbeat.
+      id: 'jazz-enclosure-251',
+      name: 'ii–V–I enclosure into the 3rd',
+      level: 'intermediate',
+      chordContext: 'ii7 → V7 → Imaj7',
+      techniques: ['chromatic-approach', 'vibrato'],
+      source: 'in the style of bebop enclosure exercises — David Baker, How to Play Bebop Vol. 1; jazzguitar.be enclosure lessons',
+      tab: [
+        { string: 5, fret: 5 },                                  // D — ii7 root
+        { string: 4, fret: 3 },                                  // F — ♭3
+        { string: 3, fret: 2 },                                  // A — 5
+        { string: 3, fret: 5 },                                  // C — ♭7
+        { string: 3, fret: 4 },                                  // B — the V7's 3rd, right at the change
+        { string: 2, fret: 6 },                                  // F — the V7's ♭7 (upper neighbour of the target)
+        { string: 2, fret: 4, technique: 'chromatic-approach' }, // D♯ — chromatic from below
+        { string: 2, fret: 5, technique: 'vibrato' },            // E — the Imaj7's 3rd: enclosed and landed
+      ],
+    },
+    {
+      // Descending G bebop dominant from the root: G F♯ F E D C B A G —
+      // Mixolydian plus the chromatic passing 7 so chord tones fall on strong
+      // beats in straight eighths.
+      id: 'jazz-bebop-dom-descent',
+      name: 'Bebop dominant descent',
+      level: 'intermediate',
+      chordContext: 'dom7 — e.g. the V7',
+      techniques: ['chromatic-approach', 'vibrato'],
+      source: 'the bebop dominant scale — David Baker, How to Play Bebop Vol. 1',
+      tab: [
+        { string: 1, fret: 3 },                                  // G — root
+        { string: 1, fret: 2, technique: 'chromatic-approach' }, // F♯ — the added passing tone
+        { string: 1, fret: 1 },                                  // F — ♭7
+        { string: 1, fret: 0 },                                  // E — 13
+        { string: 2, fret: 3 },                                  // D — 5
+        { string: 2, fret: 1 },                                  // C — passing 11
+        { string: 3, fret: 4 },                                  // B — 3
+        { string: 3, fret: 2 },                                  // A — 9
+        { string: 4, fret: 5, technique: 'vibrato' },            // G — root, an octave down
+      ],
+    },
+    {
+      // In C, as dyads: Dm7's ♭3+♭7 (F+C) → the ♭7 falls a half step to the
+      // V7's 3rd (B, F holds) → the held F falls a half step to the Imaj7's
+      // 3rd (E, B holds as the 7). The 7→3 rails, played literally.
+      id: 'jazz-guide-tone-rail',
+      name: 'Guide-tone rail (7 falls to 3)',
+      level: 'intermediate',
+      chordContext: 'ii7 → V7 → Imaj7 guide tones',
+      techniques: ['double-stop', 'slide'],
+      source: 'guide-tone comping lines — jazzguitar.be guide-tone lessons; Jens Larsen voice-leading studies',
+      tab: [
+        { string: 2, fret: 6 },                              // F — the ii7's ♭3
+        { string: 3, fret: 5, technique: 'double-stop' },    // C — the ii7's ♭7 (dyad)
+        { string: 3, fret: 4, technique: 'slide' },          // B — C falls a half step: the V7's 3rd
+        { string: 2, fret: 6, technique: 'double-stop' },    // F — held, renamed the V7's ♭7
+        { string: 2, fret: 5, technique: 'slide' },          // E — F falls a half step: the Imaj7's 3rd
+        { string: 3, fret: 4, technique: 'double-stop' },    // B — held, now the Imaj7's 7
+      ],
+    },
+  ],
 }

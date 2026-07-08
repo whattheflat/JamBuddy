@@ -230,4 +230,84 @@ export default {
       },
     ],
   },
+
+  // Structured licks (SCHEMA.md "Licks", task P-21). Written in a home key each
+  // (noted per lick) but key-agnostic in spirit — chordContext names the station.
+  // Every pitch hand-verified: s6=E s5=A s4=D s3=G s2=B s1=e (+fret, mod 12).
+  licks: [
+    {
+      // In C (box at fret 8): G C D→E C A G = 5 R 9→3 R 13 5, C major pentatonic
+      // over the I7 — the sweet B.B. side of the coin.
+      id: 'blues-bb-box-sweet',
+      name: 'B.B. box sweet-spot phrase',
+      level: 'foundation',
+      chordContext: 'over the I7',
+      techniques: ['bend', 'vibrato'],
+      source: 'in the style of B.B. King\'s box-position fills; Guitar World "B.B. box" lessons (R-2-4-5-6 grid)',
+      tab: [
+        { string: 2, fret: 8 },                          // G — the 5th
+        { string: 1, fret: 8 },                          // C — root
+        { string: 1, fret: 10, technique: 'bend' },      // D bent a whole step to E, the 3rd — the signature move
+        { string: 1, fret: 8 },                          // C
+        { string: 2, fret: 10 },                         // A — the 13
+        { string: 2, fret: 8, technique: 'vibrato' },    // G — settle on the 5th
+      ],
+    },
+    {
+      // In E, open position: ♭7–6–♭6–5 (D C♯ C B) descending on the B string
+      // under a high-e root pedal, resolving to the V7's root (B).
+      id: 'blues-open-turnaround',
+      name: 'Descending turnaround under a root pedal',
+      level: 'foundation',
+      chordContext: 'bars 11–12: I7 walking down to the V7',
+      techniques: ['double-stop', 'vibrato'],
+      source: 'the Robert Johnson-lineage turnaround (e.g. "Kind Hearted Woman"); Fundamental Changes "Blues Turnarounds for Guitar"',
+      tab: [
+        { string: 2, fret: 3 },                              // D — ♭7
+        { string: 1, fret: 0, technique: 'double-stop' },    // E pedal on top
+        { string: 2, fret: 2 },                              // C♯ — 6
+        { string: 1, fret: 0, technique: 'double-stop' },
+        { string: 2, fret: 1 },                              // C — ♭6
+        { string: 1, fret: 0, technique: 'double-stop' },
+        { string: 2, fret: 0 },                              // B — 5
+        { string: 1, fret: 0, technique: 'double-stop' },
+        { string: 5, fret: 2, technique: 'vibrato' },        // B — root of the V7: the landing
+      ],
+    },
+    {
+      // In A, box 1: C→C♯ (♭3 hammered to the major 3) into the E+A double-stop,
+      // ♭7 bend, settle on the 5th — the 12/8 slow-blues answer phrase.
+      id: 'blues-slow-curl',
+      name: 'Slow-blues curl into the root double-stop',
+      level: 'intermediate',
+      chordContext: 'over the I7, 12/8 slow blues',
+      techniques: ['hammer-on', 'double-stop', 'bend', 'vibrato'],
+      source: 'stock box-1 slow-blues vocabulary (the ♭3→3 curl); TrueFire Texas-blues chord-tone lessons',
+      tab: [
+        { string: 3, fret: 5 },                              // C — ♭3
+        { string: 3, fret: 6, technique: 'hammer-on' },      // C♯ — the major 3rd; the blues curl made explicit
+        { string: 2, fret: 5 },                              // E — 5th
+        { string: 1, fret: 5, technique: 'double-stop' },    // A on top — root+5th dyad
+        { string: 2, fret: 8, technique: 'bend' },           // G (♭7) bent a whole step toward the root
+        { string: 2, fret: 5, technique: 'vibrato' },        // E — resolve on the 5th
+      ],
+    },
+    {
+      // In A (IV = D9): the IV7's 3+♭7 tritone pair (F♯+C) slid in from one fret
+      // below (F+B), then the 5th on top — the Texas comping move as a lick.
+      id: 'blues-iv9-slide',
+      name: 'Tritone slide into the IV9',
+      level: 'intermediate',
+      chordContext: 'bar 5: landing on the IV7',
+      techniques: ['chromatic-approach', 'double-stop', 'slide', 'vibrato'],
+      source: 'the Texas/Freddie King 9th-grip slide-in ("Hide Away" comping vocabulary); Fundamental Changes SRV/Freddie King 9ths',
+      tab: [
+        { string: 4, fret: 3, technique: 'chromatic-approach' }, // F — one fret below the 3rd
+        { string: 3, fret: 4, technique: 'double-stop' },        // B — one fret below the ♭7
+        { string: 4, fret: 4, technique: 'slide' },              // F♯ — the IV7's 3rd
+        { string: 3, fret: 5, technique: 'double-stop' },        // C — the IV7's ♭7: the tritone pair lands
+        { string: 1, fret: 5, technique: 'vibrato' },            // A — the IV7's 5th (the key's root)
+      ],
+    },
+  ],
 }
