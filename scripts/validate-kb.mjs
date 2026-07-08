@@ -2,9 +2,9 @@
 // Run: node scripts/validate-kb.mjs   (exit 1 on any error)
 //
 // Lib mode: scripts/smoke.mjs imports this file with KB_VALIDATE_AS_LIB=1 set to
-// reuse the exported pure checks (checkLick, LEVELS, LICK_TECHNIQUES) against
-// in-memory fixtures — same logic, no copy. When the env var is absent the
-// script runs the full KB validation as before.
+// reuse the exported pure checks (checkLick, checkPianoRecipe, LEVELS,
+// LICK_TECHNIQUES, MAX_HAND_SPAN) against in-memory fixtures — same logic, no
+// copy. When the env var is absent the script runs the full KB validation as before.
 import { readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -95,18 +95,53 @@ function checkGuitarShape(where, chordStep, quality) {
     if (!sounded.has(pc)) return err(where, `defining tone pc ${pc} of ${quality} missing from shape`)
 }
 
-function checkPianoRecipe(where, chordStep, quality) {
+// Piano hand-span rule (SCHEMA.md rule 3: "one hand per recipe stays within a
+// 10th"). Enforced as ≤ 15 semitones — a minor 10th, the widest reading of
+// "a 10th" — so the hand-verified 14-semitone ø11 rootless voicing in
+// jazz/piano.js (P-22) stays legal while anything wider fails. Task C-22.
+export const MAX_HAND_SPAN = 15
+
+// Resolve one hand's degree list to stacked absolute semitone offsets per the
+// documented convention (src/data/kb/jazz/piano.js header, ~line 14): order
+// inside a hand = voicing order low→high, each note placed in the nearest
+// position strictly above the previous (a repeated pitch class = octave up).
+// Returns null if any degree is unresolvable (reported separately by caller).
+function stackHand(degs, quality) {
+  const notes = []
+  for (const d of degs) {
+    const pc = resolveDegree(d, quality)
+    if (pc === null) return null
+    if (!notes.length) { notes.push(pc); continue }
+    const prev = notes[notes.length - 1]
+    const step = (pc - (prev % 12) + 12) % 12
+    notes.push(prev + (step === 0 ? 12 : step))
+  }
+  return notes
+}
+
+// Pure piano-recipe validation. Returns an array of where-prefixed error
+// strings (empty = valid). Exported for reuse by scripts/smoke.mjs (lib mode).
+export function checkPianoRecipe(where, chordStep, quality) {
+  const out = []
+  const e = (msg) => out.push(`${where}: ${msg}`)
+  if (!CHORD_TYPES[quality]) { e(`unknown quality '${quality}'`); return out }
   const { recipe } = chordStep
-  if (!recipe) return err(where, 'missing recipe')
+  if (!recipe) { e('missing recipe'); return out }
   for (const hand of ['LH', 'RH']) {
     const degs = recipe[hand]
     if (degs === undefined) continue
-    if (!Array.isArray(degs) || !degs.length) return err(where, `${hand} must be a non-empty array`)
-    if (degs.length > 5) return err(where, `${hand} has ${degs.length} notes — one hand, max 5`)
+    if (!Array.isArray(degs) || !degs.length) { e(`${hand} must be a non-empty array`); continue }
+    if (degs.length > 5) e(`${hand} has ${degs.length} notes — one hand, max 5`)
     for (const d of degs)
-      if (resolveDegree(d, quality) === null) err(where, `unresolvable degree '${d}' for ${quality}`)
+      if (resolveDegree(d, quality) === null) e(`unresolvable degree '${d}' for ${quality}`)
+    const stacked = stackHand(degs, quality)
+    if (stacked === null) continue // unresolvable degree already reported
+    const span = stacked[stacked.length - 1] - stacked[0]
+    if (span > MAX_HAND_SPAN)
+      e(`${hand} [${degs.join(' ')}] spans ${span} semitones stacked low→high — max ${MAX_HAND_SPAN} (a minor 10th; SCHEMA rule 3, one hand within a 10th)`)
   }
-  if (recipe.LH === undefined && recipe.RH === undefined) err(where, 'recipe needs LH and/or RH')
+  if (recipe.LH === undefined && recipe.RH === undefined) e('recipe needs LH and/or RH')
+  return out
 }
 
 function checkBassPlay(where, play, prog) {
@@ -236,7 +271,7 @@ for (const style of styleDirs) {
         play.chords.forEach((step, ci) => {
           const cw = `${lw} chord[${ci}] (${prog.rn[ci]})`
           if (inst === 'guitar') checkGuitarShape(cw, step, prog.qualities[ci])
-          else checkPianoRecipe(cw, step, prog.qualities[ci])
+          else for (const m of checkPianoRecipe(cw, step, prog.qualities[ci])) errors.push(m)
         })
       })
     }

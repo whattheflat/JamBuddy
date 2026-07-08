@@ -534,7 +534,81 @@ check('every KB pack licks[] entry (if any) passes checkLick', () => {
   }
 })
 
-// ─── 5. Summary + exit code ───────────────────────────────────────────────────
+// ─── 5. Piano hand-span rule (C-22) ───────────────────────────────────────────
+//
+// SCHEMA.md rule 3: one hand per recipe stays within a 10th. The validator
+// enforces span ≤ MAX_HAND_SPAN (15 semitones, a minor 10th) by stacking the
+// recipe's degrees low→high (each note in the nearest position above the
+// previous — the documented jazz/piano.js convention). Prove the rule bites on
+// synthetic fixtures, then run every REAL piano pack recipe through the check.
+
+console.log('\nPiano hand-span rule (validate-kb lib mode):')
+
+const { checkPianoRecipe, MAX_HAND_SPAN } = kbv
+
+check('validate-kb exports checkPianoRecipe / MAX_HAND_SPAN (= 15, a minor 10th)', () => {
+  assert(typeof checkPianoRecipe === 'function', 'checkPianoRecipe is not a function')
+  assert(MAX_HAND_SPAN === 15, `MAX_HAND_SPAN must be 15 (minor 10th), got ${MAX_HAND_SPAN}`)
+})
+
+// dom7 LH ['1','7','3'] stacks 0 → 10 → 16 (the 3rd must sit ABOVE the ♭7):
+// span 16 = a major 10th — one semitone past the rule. Must FAIL, and the
+// error must name the hand and the computed span.
+check('synthetic 16-semitone hand (dom7 LH [1 7 3]) FAILS with the span error', () => {
+  const errs = checkPianoRecipe('fixture', { recipe: { LH: ['1', '7', '3'] } }, 'dom7')
+  assert(errs.length > 0, 'a 16-semitone hand was accepted')
+  assert(errs.some((e) => e.includes('LH') && e.includes('spans 16')),
+    `no error names LH + span 16: ${errs.join('; ')}`)
+})
+
+// dom7 LH ['1','7','#9'] stacks 0 → 10 → 15: span exactly 15 (the 7♯9 sound).
+// The boundary is legal — SCHEMA's "within a 10th" includes the minor 10th.
+check('synthetic 15-semitone hand (dom7 LH [1 7 #9]) passes (boundary is legal)', () => {
+  const errs = checkPianoRecipe('fixture', { recipe: { LH: ['1', '7', '#9'] } }, 'dom7')
+  assert(errs.length === 0, `span-15 boundary rejected: ${errs.join('; ')}`)
+})
+
+// The rule must bite on the RIGHT hand too, and a legal LH must not mask it.
+check('RH is checked independently (LH [1] fine, RH [1 7 3] fails naming RH)', () => {
+  const errs = checkPianoRecipe('fixture', { recipe: { LH: ['1'], RH: ['1', '7', '3'] } }, 'dom7')
+  assert(errs.some((e) => e.includes('RH') && e.includes('spans 16')),
+    `RH span not enforced: ${errs.join('; ')}`)
+  assert(!errs.some((e) => e.includes('LH')), `legal LH wrongly flagged: ${errs.join('; ')}`)
+})
+
+// P-22's widest verified voicing: ø11 rootless ['3','5','7','11'] on half_dim
+// stacks 3 → 6 → 10 → 17: span 14. It must stay legal — that's why the
+// constant is 15, not 12 or 16.
+check("jazz's widest voicing (half_dim LH [3 5 7 11], span 14) stays legal", () => {
+  const errs = checkPianoRecipe('fixture', { recipe: { LH: ['3', '5', '7', '11'] } }, 'half_dim')
+  assert(errs.length === 0, `the verified 14-span ø11 voicing was rejected: ${errs.join('; ')}`)
+})
+
+// Live-KB guard: every piano recipe in every registered pack (present and
+// future — e.g. the incoming gospel piano cell) passes checkPianoRecipe.
+check('every KB piano pack recipe passes checkPianoRecipe (span ≤ 15 everywhere)', () => {
+  let recipes = 0
+  for (const styleName of styleNames) {
+    const pack = kb[styleName]?.instruments?.piano
+    if (!pack) continue
+    const progById = Object.fromEntries((kb[styleName].progressions ?? []).map((p) => [p.id, p]))
+    for (const [pid, plays] of Object.entries(pack.plays ?? {})) {
+      const prog = progById[pid]
+      assert(prog, `${styleName}/piano plays key '${pid}' is not a progression of this style`)
+      plays.forEach((play, pi) => {
+        (play.chords ?? []).forEach((step, ci) => {
+          recipes++
+          const where = `${styleName}/piano ${pid} play[${pi}] "${play.label ?? '?'}" chord[${ci}]`
+          const errs = checkPianoRecipe(where, step, prog.qualities[ci])
+          assert(errs.length === 0, errs.join('; '))
+        })
+      })
+    }
+  }
+  console.log(`      (${recipes} live piano recipes checked)`)
+})
+
+// ─── 6. Summary + exit code ───────────────────────────────────────────────────
 
 const total = passed + failures.length
 console.log('')
