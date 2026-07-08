@@ -146,6 +146,54 @@ export default {
       },
     ],
 
+    'jazz-tritone-sub': [
+      {
+        label: 'Shells down one string (chromatic slide)',
+        level: 'intermediate',
+        chords: [
+          { shape: SHELL_5.min7, note: 'ii7 — root on the A string' },
+          { shape: SHELL_5.dom7, note: '♭II7 — two fingers drop a fret; the guide-tone finger stays put' },
+          { shape: SHELL_5.maj7, note: 'Imaj7 — one more fret down: home' },
+        ],
+        tips: 'The tritone sub turns the ii–V–I bass into a one-string chromatic slide: 2 → ♭2 → 1, one fret per chord. It works because ♭II7 and V7 share their guide tones — the 3rd and ♭7 swap names (in C: Db7 has F and B, exactly G7\'s B and F). Target the ♭II7\'s 3rd when soloing; it is the old V7\'s ♭7.',
+      },
+      {
+        label: 'Drop-2 slide, top four strings',
+        level: 'intermediate',
+        chords: [
+          { shape: DROP2.min7Root, note: 'ii7 — root position, root on the D string' },
+          { shape: DROP2.dom7Root, note: '♭II7 — same architecture, one fret down' },
+          { shape: DROP2.maj7Root, note: 'Imaj7 — one more fret down: three voices fall a half step, one holds' },
+        ],
+        tips: 'The upper-register version: three root-position drop-2 grips, roots falling a fret at a time. Each change is three voices dropping a half step around one common tone — the ii7\'s ♭3 is held to become the ♭II7\'s 3rd, then the ♭II7\'s ♭7 is held to become the Imaj7\'s 7. High and thin, it stays out of the piano\'s way, and the top string sings the guide-tone line: held into the ♭II7, falling a half step into home.',
+      },
+    ],
+
+    'jazz-rhythm-bridge': [
+      {
+        label: 'Shells around the circle',
+        level: 'intermediate',
+        chords: [
+          { shape: SHELL_6.dom7, note: 'III7 — V7 of vi, the first domino' },
+          { shape: SHELL_5.dom7, note: 'VI7 — root string up, nearly the same fret' },
+          { shape: SHELL_6.dom7, note: 'II7 — the pattern repeats a whole step down' },
+          { shape: SHELL_5.dom7, note: 'V7 — hands you back the A section' },
+        ],
+        tips: 'One grip pair, four chords: roots falling in fifths alternate 6th → 5th string at almost the same fret, so the whole bridge sits in one position. Each chord is the V of the next — comp two bars each and voice-lead the ♭7 falling a half step onto the next chord\'s 3rd.',
+      },
+      {
+        label: 'Drop-2, alternating inversions (top four strings)',
+        level: 'intermediate',
+        chords: [
+          { shape: DROP2.dom7Inv2, note: 'III7 — 3rd in the bass voice' },
+          { shape: DROP2.dom7Root, note: 'VI7 — nearest root-position grip' },
+          { shape: DROP2.dom7Inv2, note: 'II7 — back to the inversion' },
+          { shape: DROP2.dom7Root, note: 'V7 — root position into the turnaround' },
+        ],
+        tips: 'Alternating the 3rd-in-the-bass grip with root-position drop-2 keeps every change a short hop — root-position-only would force five-fret jumps around this circle. Two bars per chord is room to decorate: restrike on the Charleston, or walk the top voice.',
+      },
+    ],
+
     'jazz-blues': [
       {
         label: 'Shells through the form',

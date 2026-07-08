@@ -32,8 +32,11 @@ const SUS4_6 = { rootStr: 6, offsets: [0, 0, 'x', 'x', 0, 'x'], fingers: [1, 2, 
 const MAJ_6 = { rootStr: 6, offsets: [0, 2, 2, 1, 'x', 'x'], fingers: [1, 3, 4, 2, 0, 0] }       // R–5–R–3 (E-shape)
 const MAJ_5 = { rootStr: 5, offsets: ['x', 0, 2, 2, 2, 'x'], fingers: [0, 1, 2, 3, 4, 0] }       // R–5–R–3 (A-shape)
 
-// --- the passing diminished 7th (#iv°7) ---
+// --- the passing diminished 7th (#iv°7 / ♯i°7 — symmetric, one grip fits both) ---
 const DIM7_5 = { rootStr: 5, offsets: ['x', 0, 1, -1, 1, 'x'], fingers: [0, 2, 3, 1, 4, 0] }     // R–♭5–𝄫7–♭3 (symmetric)
+
+// --- the borrowed iv (minor 6th on the middle strings, for the tonicized Amen) ---
+const MIN6_4 = { rootStr: 4, offsets: ['x', 'x', 0, -2, 0, -2], fingers: [0, 0, 3, 1, 4, 2] }    // R–♭3–6–R
 
 export default {
   styleIntro:
@@ -186,6 +189,58 @@ export default {
           { shape: MAJ9_6, extensions: ['9'], note: 'Imaj9 — soft landing' },
         ],
         tips: 'The two min9 chords are the identical shape a fourth apart — one of the easiest gospel moves to internalize. The maj9 resolution sounds especially plush after a back-door dominant.',
+      },
+    ],
+
+    'gospel-walkup-dim': [
+      {
+        label: 'Walk-up on the A string (shells)',
+        level: 'intermediate',
+        chords: [
+          { shape: SHELL_5.maj7, note: 'Imaj7 — root on the A string' },
+          { shape: DIM7_5, note: '♯i°7 — one fret up: the ladder rung' },
+          { shape: SHELL_5.min7, note: 'ii7 — one more fret: the bass arrived by half steps' },
+          { shape: SHELL_6.dom7, note: 'V7 — turn around and climb again' },
+        ],
+        tips: 'The first three roots sit on one string, one fret apart — the walk-up is literally visible under your hand. Give the diminished its full beat but keep it quieter than the chords around it: it is a passing chord, a rung, not a destination. Over it, arpeggiate its four notes (all minor 3rds apart) — the fastest route from I\'s tones to ii\'s.',
+      },
+      {
+        label: '9th-coloured walk-up (mixed registers)',
+        level: 'intermediate',
+        chords: [
+          { shape: MAJ9_6, extensions: ['9'], note: 'Imaj9 — low root, the 9 shining on top' },
+          { shape: DIM7_5, note: '♯i°7 — the diminished stays plain; its tension IS the colour' },
+          { shape: MIN9_5, extensions: ['9'], note: 'ii9' },
+          { shape: DOM9_5, extensions: ['9'], note: 'V9' },
+        ],
+        tips: 'Same climb with the gospel shimmer on the resting chords. Remember what the ♯i°7 really is — a rootless VI7♭9 aimed at ii — but not every note climbs: only the root rises a half step into ii\'s root, while the hidden dominant\'s ♭7 and ♭9 sigh downward into the ii9. Don\'t decorate the diminished; decorate its resolution.',
+      },
+    ],
+
+    'gospel-tonicized-amen': [
+      {
+        label: 'Shell tag — one finger tells the story',
+        level: 'intermediate',
+        chords: [
+          { shape: SHELL_6.maj7, note: 'Imaj7 — R–7–3' },
+          { shape: SHELL_6.dom7, note: 'I7 — same grip, one finger drops a fret: the 7 falls to ♭7' },
+          { shape: SHELL_5.maj7, note: 'IVmaj7 — same fret, root string up (the I7 pointed here)' },
+          { shape: MIN6_4, note: 'iv6 — the borrowed minor on the middle strings' },
+          { shape: SHELL_6.maj7, note: 'Imaj7 — home' },
+        ],
+        tips: 'Watch the two half-step falls: the I\'s major 7 drops to ♭7 (turning I into V7/IV), then the IV\'s 3rd drops to ♭3 (the borrowed iv). Everything else holds. When soloing, target exactly those two falling voices — the ♭7 of I7 resolves into the 3rd of IV, and the iv\'s ♭3 sighs down to the 9/1 of home.',
+      },
+      {
+        label: '9th-coloured tag (upper register)',
+        level: 'intermediate',
+        chords: [
+          { shape: MAJ9_6, extensions: ['9'], note: 'Imaj9' },
+          { shape: DOM9_6, extensions: ['9'], note: 'I9 — the same one-finger drop, with the 9 held on top' },
+          { shape: MAJ9_6, extensions: ['9'], note: 'IVmaj9 — identical grip five frets up' },
+          { shape: MIN6_4, note: 'iv6 — drop to the plain borrowed minor; no 9 here' },
+          { shape: MAJ9_6, extensions: ['9'], note: 'Imaj9 — resolve with colour' },
+        ],
+        tips: 'The maj9 → dom9 move is the same story as the shells — only the D-string finger moves, 7 falling to ♭7 — but the held 9 makes the tag glow. Leave the iv6 uncoloured: after four 9th chords, the bare borrowed minor is the emotional dip that sets up the resolution.',
       },
     ],
   },

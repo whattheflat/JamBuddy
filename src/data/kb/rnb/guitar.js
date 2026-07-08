@@ -169,6 +169,58 @@ export default {
         tips: 'For the gospel walk, insert a passing diminished between any two diatonic chords a step apart (I→♯i°→ii) — same borrowed-from-the-choir logic as the iv.',
       },
     ],
+
+    'rnb-justthetwo': [
+      {
+        label: 'Smooth-soul 9ths and the 13',
+        level: 'intermediate',
+        chords: [
+          { shape: MAJ9_5, extensions: ['9'], note: '♭VImaj9 — the lush opener' },
+          { shape: DOM13_6, extensions: ['13'], note: 'V13 — dominant colour without the bark' },
+          { shape: M9_5, extensions: ['9'], note: 'i9 — home, briefly' },
+          { shape: M9_5, extensions: ['9'], note: '♭vii9 — same grip, two frets down' },
+          { shape: DOM9_5, extensions: ['9'], note: '♭III9 — the V of ♭VI: the loop re-arms itself' },
+        ],
+        tips: 'Treat the last two chords as one gesture — a ii–V pointing at the ♭VImaj9 that starts the next lap (in the original they share a single bar). Solo target: the major 7 of ♭VI is the sweetest note in the loop, and the ♭III9\'s ♭7 falls a half step onto it.',
+      },
+      {
+        label: 'Leaner set with the altered V',
+        level: 'intermediate',
+        chords: [
+          { shape: MAJ7_5, note: '♭VImaj7 — plainer, room for the vocal' },
+          { shape: HENDRIX, extensions: ['#9'], note: 'V7♯9 — the minor-key dominant with grit, one fret below ♭VI' },
+          { shape: M11_C, extensions: ['11'], note: 'i11 — dark and hollow' },
+          { shape: M9_6, extensions: ['9'], note: '♭vii9 — low root, 9 on top' },
+          { shape: DOM13_6, extensions: ['13'], note: '♭III13' },
+        ],
+        tips: 'The verse-register version: fewer notes, lower voicings, and the ♯9 on the V because in a minor key the dominant wants tension. Save the first play\'s glossy 9ths for the hook — the contrast between the two sets is the arrangement.',
+      },
+    ],
+
+    'rnb-chromatic-vi': [
+      {
+        label: 'Chromatic descent on the A string',
+        level: 'intermediate',
+        chords: [
+          { shape: SIX9_5, extensions: ['6', '9'], note: 'I6/9 — Motown sunshine on the tonic' },
+          { shape: M9_5, extensions: ['9'], note: 'vi9 — root high on the A string' },
+          { shape: DOM9_5, extensions: ['9'], note: '♭VI9 — the borrowed dominant, one fret down' },
+          { shape: DOM9_5, extensions: ['9'], note: 'V9 — one more fret: the slide lands' },
+        ],
+        tips: 'The last three roots fall one fret at a time down a single string — vi, ♭VI7, V is chromatic planing, the same trick as the jazz tritone sub seen from above (♭VI7 subs for II7). Target the ♭VI7\'s 3rd: it slides a half step down onto the 3rd of V.',
+      },
+      {
+        label: 'Low-string 13th descent, triad on top',
+        level: 'intermediate',
+        chords: [
+          { shape: TOP3_MAJ, note: 'I — a bare high triad; let the bass state the root' },
+          { shape: M9_6, extensions: ['9'], note: 'vi9 — drop to the low-E root' },
+          { shape: DOM13_6, extensions: ['13'], note: '♭VI13 — one fret down, horn-section colour' },
+          { shape: DOM13_6, extensions: ['13'], note: 'V13 — one more fret; hold it for the horn hit' },
+        ],
+        tips: 'The register story: start thin and high, then walk the low E string down in half steps with big 13th colour — the guitar plays the horn line. Punch the two 13ths on the beat and mute instantly; Sir Duke swings because of the silence between hits.',
+      },
+    ],
   },
 
   improv: {
