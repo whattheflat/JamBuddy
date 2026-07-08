@@ -6,25 +6,34 @@ import RoadmapTrack from './RoadmapTrack'
 import ChordDiagram from './ChordDiagram'
 import MiniPiano from './MiniPiano'
 import VoicingBrowser from './VoicingBrowser'
+import LickCard, { TechniqueLegend } from './LickCard'
+import { ExploreSection, VoicingsSection, LevelChips } from './ExplorePanel'
 import { pianoVoicingChain } from '../lib/piano'
 
-// ─── JamGuide — the Roadmap bottom dock ───────────────────────────────────────
+// ─── JamGuide — the Knowledge Center bottom dock ──────────────────────────────
 //
-// The large bottom panel of JamBuddy. This is the SHELL (task L-02): the
-// collapsed header bar, instrument + style tabs (derived from the KB registry),
-// live loop → KB progression resolution, and a clearly-marked placeholder slot
-// where the Roadmap visualization (RoadmapTrack + ChordDiagram, task D-02) will
-// be wired in afterwards.
+// The large bottom panel of JamBuddy. Originally the Roadmap Jam Guide dock
+// (tasks L-02/D-02/L-11); task L-22 grew it into the KNOWLEDGE CENTER shell per
+// docs/design/knowledge-center.md — one dock, four sections behind a pill nav:
 //
-// This component does NOT import RoadmapTrack or ChordDiagram — sibling tasks
-// build those in parallel; D-02 fills the [data-roadmap-slot] left here.
+//   Jam Guide (live)     — the original Roadmap body, moved verbatim (default)
+//   Explore              — KB progression browser + famous progressions
+//   Voicings             — chord picker (follows the live chord) → VoicingBrowser
+//   Licks & Techniques   — per-style LickCard grid + technique legend
 //
-// Props (the contract D-02 relies on):
+// Explore/Voicings parts come from ExplorePanel.jsx (refactored to named
+// exports); the shell owns the shared foundation/intermediate level filter
+// consumed by Explore + Licks. Collapsed-bar behaviour is unchanged apart from
+// the "Knowledge Center" name.
+//
+// Props:
 //   detectedProgression : string[] | null  — the live detected loop (chord names)
 //   keyInfo             : { root, mode, confidence } | null  — effective key
 //   chordHistory        : string[]          — committed chord history (for position)
 //   bpm                 : number | null     — live tempo from the onset pipeline
 //   currentChord        : string | undefined — most recent committed chord
+//   onFocusChord        : fn({rootPc,quality}|null) — Fretboard guide-tone link (D-03)
+//   onChordClick        : fn(chordName) — opens ChordDetailModal (additive, L-22)
 
 // Display order for instrument tabs; availability is derived from the KB, not
 // hardcoded — EXCEPT piano, which is always available: its voicings are COMPUTED
@@ -37,8 +46,26 @@ const INSTRUMENTS = [
 ]
 const COMPUTED_INSTRUMENTS = new Set(['piano'])
 
-export default function JamGuide({ detectedProgression, keyInfo, chordHistory = [], bpm, currentChord, onFocusChord }) {
+// Knowledge Center sections (D-20 §1). 'jam' is the default landing section.
+const SECTIONS = [
+  { id: 'jam',      label: 'Jam Guide' },
+  { id: 'explore',  label: 'Explore' },
+  { id: 'voicings', label: 'Voicings' },
+  { id: 'licks',    label: 'Licks & Techniques' },
+]
+
+export default function JamGuide({ detectedProgression, keyInfo, chordHistory = [], bpm, currentChord, onFocusChord, onChordClick }) {
   const [open, setOpen] = useState(false)
+
+  // ── Knowledge Center shell state ────────────────────────────────────────────
+  // Active section + the shared level filter (Explore + Licks toolbars, D-20 §4).
+  // Both levels on by default; both can never be off (last-chip tap is a no-op).
+  const [section, setSection] = useState('jam')
+  const [levels, setLevels] = useState({ foundation: true, intermediate: true })
+  const toggleLevel = (key) => setLevels(prev => {
+    const next = { ...prev, [key]: !prev[key] }
+    return (next.foundation || next.intermediate) ? next : prev
+  })
 
   // Which instruments have at least one KB pack across the registry.
   const availableInstruments = useMemo(() => {
@@ -186,7 +213,7 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
       >
         <span className="flex items-center gap-2 min-w-0">
           <span className="text-base shrink-0">🎸</span>
-          <span className="text-sm font-semibold text-accent shrink-0">Jam Guide</span>
+          <span className="text-sm font-semibold text-accent shrink-0">Knowledge Center</span>
           <span className="text-gray-600 shrink-0">—</span>
           <span className="text-sm text-gray-300 truncate">{headerLabel}</span>
           {match.matched && keyInfo?.root && (
@@ -202,6 +229,40 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
       {open && (
         <div className="border-t border-border flex flex-col" style={{ height: '70vh' }}>
 
+          {/* ── Section nav (Knowledge Center pills, D-20 §1) ── */}
+          <div className="flex items-center gap-1 px-4 py-2 border-b border-border overflow-x-auto">
+            {SECTIONS.map(s => {
+              const active = section === s.id
+              const live = s.id === 'jam' && match.matched
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  aria-pressed={active}
+                  aria-label={live ? `${s.label} — live loop matched` : s.label}
+                  onClick={() => setSection(s.id)}
+                  className={`shrink-0 flex items-center gap-1.5 px-3 py-1 min-h-[32px] rounded-lg text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                    active
+                      ? 'bg-accent/20 border border-accent text-accent font-semibold'
+                      : 'border border-border text-gray-300 hover:border-gray-500 hover:text-gray-100'
+                  }`}
+                >
+                  <span>{s.label}</span>
+                  {live && (
+                    <span
+                      aria-hidden="true"
+                      title="matches your loop"
+                      className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
+                    />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* ── Section 1: Jam Guide (live) — the Roadmap body, moved verbatim ── */}
+          {section === 'jam' && (
+          <>
           {/* ── Tab rows ── */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 border-b border-border">
 
@@ -284,6 +345,131 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
               </div>
             )}
           </div>
+          </>
+          )}
+
+          {/* ── Section 2: Explore — KB progression browser + famous progressions ── */}
+          {section === 'explore' && (
+            <div className="flex-1 min-h-0 p-4 overflow-auto">
+              <ExploreSection
+                keyInfo={keyInfo}
+                levels={levels}
+                onToggleLevel={toggleLevel}
+                onChordClick={onChordClick}
+              />
+            </div>
+          )}
+
+          {/* ── Section 3: Voicings — picker (follows live chord) → VoicingBrowser ── */}
+          {section === 'voicings' && (
+            <div className="flex-1 min-h-0 p-4 overflow-auto">
+              <VoicingsSection
+                keyInfo={keyInfo}
+                chordHistory={chordHistory}
+                currentChord={currentChord}
+              />
+            </div>
+          )}
+
+          {/* ── Section 4: Licks & Techniques — per-style LickCard grid ── */}
+          {section === 'licks' && (
+            <div className="flex-1 min-h-0 p-4 overflow-auto">
+              <LicksSection styles={styles} levels={levels} onToggleLevel={toggleLevel} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── LicksSection — per-style structured-lick grid (D-20 §1 section 4) ────────
+//
+// Reads the STRUCTURED top-level `kb[style].instruments.guitar.licks ?? []`
+// (C-20 schema; P-21 authors blues/jazz/funk concurrently — the section must
+// work whether or not that data has landed, hence the defensive reads and the
+// honest per-style empty states). One TechniqueLegend per grid, never per card.
+function LicksSection({ styles, levels, onToggleLevel }) {
+  const licksFor = (id) => {
+    const l = kb?.[id]?.instruments?.guitar?.licks
+    return Array.isArray(l) ? l : []
+  }
+  const stylesWithLicks = useMemo(
+    () => styles.filter(s => licksFor(s.id).length > 0),
+    [styles] // kb is a static module import
+  )
+
+  const [styleOverride, setStyleOverride] = useState(null)
+  const activeStyle = styleOverride ?? stylesWithLicks[0]?.id ?? styles[0]?.id
+  const activeLabel = styles.find(s => s.id === activeStyle)?.label ?? activeStyle
+
+  const all = licksFor(activeStyle)
+  // Licks without a `level` count as foundation (D-20 §4).
+  const visible = all.filter(l => levels[l?.level === 'intermediate' ? 'intermediate' : 'foundation'])
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Toolbar: style chips + shared level filter */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex items-center gap-1 flex-wrap">
+          {styles.map(s => {
+            const active = s.id === activeStyle
+            const has = stylesWithLicks.some(w => w.id === s.id)
+            return (
+              <button key={s.id} type="button" aria-pressed={active}
+                onClick={() => setStyleOverride(s.id)}
+                title={has ? s.label : `${s.label} — no licks authored yet`}
+                className={`px-2.5 py-1 min-h-[32px] rounded-lg text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                  active
+                    ? 'bg-accent/20 border border-accent text-accent font-semibold'
+                    : has
+                      ? 'border border-transparent text-gray-400 hover:text-gray-200 hover:border-border'
+                      : 'border border-transparent text-gray-600 hover:text-gray-400 hover:border-border'
+                }`}>
+                {s.label}
+              </button>
+            )
+          })}
+        </div>
+        <div className="w-px h-5 bg-border shrink-0" />
+        <LevelChips levels={levels} onToggle={onToggleLevel} />
+      </div>
+
+      <p className="text-[11px] text-gray-500">
+        Guitar licks · tab reads high e on top · amber marks = techniques (legend below)
+      </p>
+
+      {visible.length > 0 ? (
+        <>
+          <div
+            className="grid gap-3"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}
+          >
+            {visible.map((l, i) => (
+              <LickCard key={l?.id ?? i} lick={l} size="full" />
+            ))}
+          </div>
+          {/* Glyph key — once per grid (D-20 §3), not per card */}
+          <div className="border-t border-border pt-3">
+            <TechniqueLegend />
+          </div>
+        </>
+      ) : (
+        <div className="min-h-[120px] flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-border text-center px-4">
+          {all.length === 0 ? (
+            <>
+              <p className="text-sm text-gray-400">No licks authored for {activeLabel} yet.</p>
+              <p className="text-xs text-gray-500">
+                {stylesWithLicks.length > 0
+                  ? `${stylesWithLicks.map(s => s.label).join(', ')} ${stylesWithLicks.length === 1 ? 'has' : 'have'} them — pick one above.`
+                  : 'Lick packs are landing style by style — check back soon.'}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-gray-400">
+              Nothing at the selected level for {activeLabel} — flip the level filter back on.
+            </p>
+          )}
         </div>
       )}
     </div>

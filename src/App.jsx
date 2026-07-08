@@ -675,6 +675,7 @@ export default function App() {
         bpm={bpm}
         currentChord={currentChord}
         onFocusChord={setJamFocusChord}
+        onChordClick={setSelectedChord}
       />
     </div>
   )

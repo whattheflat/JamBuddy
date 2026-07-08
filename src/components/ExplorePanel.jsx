@@ -1,6 +1,24 @@
-import { useState } from 'react'
+// ExplorePanel — refactored into Knowledge Center parts (task L-22, per
+// docs/design/knowledge-center.md §7 step 1).
+//
+// This file now exports the named building blocks the Knowledge Center shell
+// (JamGuide.jsx) composes:
+//
+//   <LevelChips levels onToggle/>        — the shared foundation/intermediate filter
+//   <ChordPickerToolbar …/>              — controlled root × quality picker row
+//   <ExploreSection …/>                  — KB progression browser + famous progressions
+//   <VoicingsSection …/>                 — picker (follows the live chord) → VoicingBrowser
+//
+// The default export remains a thin standalone composition of the parts (the
+// panel is verified-orphaned — no importer — so it exists only so the file
+// stays a complete, mountable component). GuitarGrid/PianoGrid are kept as
+// exported no-audio fallbacks per the D-20 IA map (§2).
+
+import { useEffect, useMemo, useState } from 'react'
 import ChordBox from './ChordBox'
 import MiniPiano from './MiniPiano'
+import VoicingBrowser from './VoicingBrowser'
+import kb from '../data/kb/index.js'
 import { getGuitarVoicings, getPianoTechniques, parseChord } from '../lib/voicings'
 import { CHORD_TYPES, NOTES, getChordsInKey, toRomanNumeral } from '../lib/theory'
 import { FAMOUS_PROGRESSIONS, progressionInKey } from '../lib/education'
@@ -24,6 +42,66 @@ const CHORD_TYPE_OPTIONS = [
 
 const MAJOR_TYPES = new Set(['maj','maj7','maj6','add9','sus4','sus2','aug','dom7'])
 
+// Progressions/licks without a `level` count as foundation (D-20 §4).
+const levelOf = (item) => (item?.level === 'intermediate' ? 'intermediate' : 'foundation')
+
+// ─── Level filter chips (shared by Explore + Licks toolbars) ──────────────────
+// Two toggle chips, both on by default. The SHELL owns the `levels` state
+// ({foundation, intermediate}) and enforces "both can't be off"; the chip for
+// the last active level advertises the no-op via its title.
+export function LevelChips({ levels = {}, onToggle }) {
+  const defs = [
+    { key: 'foundation',   label: 'Foundation'   },
+    { key: 'intermediate', label: 'Intermediate' },
+  ]
+  return (
+    <div className="flex items-center gap-1" role="group" aria-label="Level filter">
+      {defs.map(d => {
+        const active = !!levels[d.key]
+        const lastActive = active && !defs.some(o => o.key !== d.key && levels[o.key])
+        return (
+          <button
+            key={d.key}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onToggle?.(d.key)}
+            title={lastActive
+              ? 'At least one level stays on'
+              : `${active ? 'Hide' : 'Show'} ${d.label.toLowerCase()} material`}
+            className={`min-h-[32px] px-2.5 py-1 rounded-lg border text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+              active
+                ? 'bg-accent/20 border-accent text-accent font-semibold'
+                : 'bg-surface border-border text-gray-400 hover:text-gray-200 hover:border-gray-500'
+            }`}
+          >
+            {d.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Level badge on cards — mirrors LickCard's badge treatment (amber = the
+// existing secondary-tone token; foundation stays quiet).
+function LevelBadge({ level }) {
+  if (level === 'intermediate') {
+    return (
+      <span className="shrink-0 text-[9px] uppercase tracking-wide font-semibold text-amber border border-amber/40 rounded px-1.5 py-px">
+        intermediate
+      </span>
+    )
+  }
+  if (level === 'foundation') {
+    return (
+      <span className="shrink-0 text-[9px] uppercase tracking-wide font-semibold text-gray-400 border border-border rounded px-1.5 py-px">
+        foundation
+      </span>
+    )
+  }
+  return null
+}
+
 // ─── Quick-pick chip row ──────────────────────────────────────────────────────
 function ChipRow({ label, chords, active, keyInfo, onSelect }) {
   if (!chords?.length) return null
@@ -35,7 +113,7 @@ function ChipRow({ label, chords, active, keyInfo, onSelect }) {
           const rn = keyInfo?.root ? toRomanNumeral(chord, keyInfo.root, keyInfo.mode) : ''
           return (
             <button key={chord} onClick={() => onSelect(chord)}
-              className={`flex flex-col items-center px-2.5 py-1 rounded-lg border text-xs font-bold transition-all ${
+              className={`flex flex-col items-center px-2.5 py-1 rounded-lg border text-xs font-bold transition-all outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                 active === chord
                   ? 'bg-accent border-accent text-white'
                   : 'bg-surface border-border text-gray-300 hover:border-accent/50 hover:text-accent'
@@ -50,8 +128,38 @@ function ChipRow({ label, chords, active, keyInfo, onSelect }) {
   )
 }
 
-// ─── Guitar voicings grid ─────────────────────────────────────────────────────
-function GuitarGrid({ chordName }) {
+// ─── Chord picker toolbar (controlled: root × quality) ───────────────────────
+export function ChordPickerToolbar({ root, typeKey, onRootChange, onTypeChange }) {
+  const chordName = root + (CHORD_TYPES[typeKey]?.suffix ?? '')
+  return (
+    <div className="flex flex-wrap gap-2 items-center p-3 bg-surface border border-border rounded-xl">
+      <div className="flex flex-wrap gap-1">
+        {NOTES.map(n => (
+          <button key={n} type="button" onClick={() => onRootChange?.(n)}
+            aria-pressed={root === n}
+            className={`px-2 py-0.5 rounded text-xs font-bold transition-all outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+              root === n ? 'bg-accent text-white' : 'bg-border text-gray-400 hover:text-white'
+            }`}>
+            {n}
+          </button>
+        ))}
+      </div>
+      <div className="w-px h-5 bg-border shrink-0" />
+      <div className="relative">
+        <select value={typeKey} onChange={e => onTypeChange?.(e.target.value)}
+          aria-label="Chord quality"
+          className="appearance-none bg-panel border border-border rounded-lg pl-2 pr-6 py-1 text-xs text-gray-200 cursor-pointer focus:outline-none focus:border-accent">
+          {CHORD_TYPE_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+        </select>
+        <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs">▾</span>
+      </div>
+      <div className="text-2xl font-black text-accent ml-2">{chordName}</div>
+    </div>
+  )
+}
+
+// ─── Guitar voicings grid (no-audio fallback; superseded by VoicingBrowser) ──
+export function GuitarGrid({ chordName }) {
   const voicings = getGuitarVoicings(chordName)
   if (!voicings.length) return <p className="text-gray-600 text-sm py-4">No voicings for {chordName}.</p>
   return (
@@ -71,8 +179,8 @@ function GuitarGrid({ chordName }) {
   )
 }
 
-// ─── Piano techniques grid ────────────────────────────────────────────────────
-function PianoGrid({ chordName }) {
+// ─── Piano techniques grid (no-audio fallback; superseded by VoicingBrowser) ─
+export function PianoGrid({ chordName }) {
   const parsed = parseChord(chordName)
   const techniques = getPianoTechniques(chordName)
   const rootPc = parsed?.rootPc ?? 0
@@ -98,6 +206,8 @@ function PianoGrid({ chordName }) {
 }
 
 // ─── Famous progressions using this chord as tonic ───────────────────────────
+// NOTE (D-20 §4, recorded Maestro call): FAMOUS_PROGRESSIONS carries no `level`
+// field — these cards show no badge and are EXEMPT from the level filter.
 function ProgressionCards({ chordName, onChordClick }) {
   const parsed = parseChord(chordName)
   if (!parsed) return null
@@ -131,7 +241,7 @@ function ProgressionCards({ chordName, onChordClick }) {
               {chordsHere.map((c, i) => (
                 <span key={i} className="flex items-center gap-1">
                   <button onClick={() => onChordClick?.(c)}
-                    className={`px-2.5 py-1 rounded-lg font-bold text-sm border transition-all ${
+                    className={`px-2.5 py-1 rounded-lg font-bold text-sm border transition-all outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                       i === 0
                         ? 'bg-accent border-accent text-white'
                         : 'bg-panel border-border text-gray-200 hover:border-accent/50 hover:text-accent'
@@ -153,15 +263,132 @@ function ProgressionCards({ chordName, onChordClick }) {
   )
 }
 
-// ─── Main panel ───────────────────────────────────────────────────────────────
-export default function ExplorePanel({ keyInfo, chordHistory, onChordClick }) {
-  const [open, setOpen] = useState(false)
+// ─── One KB progression card (the Explore browser hero) ──────────────────────
+function KbProgressionCard({ prog, keyRootPc, onChordClick }) {
+  const degrees = prog?.degrees ?? []
+  const qualities = prog?.qualities ?? []
+  const chords = degrees.map((deg, i) => {
+    const pc = (((keyRootPc + deg) % 12) + 12) % 12
+    return `${NOTES[pc]}${CHORD_TYPES[qualities[i]]?.suffix ?? ''}`
+  })
+  const songs = Array.isArray(prog?.songs) ? prog.songs : []
+  return (
+    <div className="p-3 bg-surface border border-border rounded-xl">
+      <div className="flex items-center flex-wrap gap-2 mb-2">
+        <span className="font-bold text-white text-sm">{prog?.name ?? prog?.id ?? 'Untitled'}</span>
+        {Array.isArray(prog?.rn) && prog.rn.length > 0 && (
+          <span className="text-[10px] font-mono text-gray-600">{prog.rn.join(' – ')}</span>
+        )}
+        <LevelBadge level={levelOf(prog)} />
+      </div>
+      {chords.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 items-center mb-2">
+          {chords.map((c, i) => (
+            <span key={i} className="flex items-center gap-1">
+              <button type="button" onClick={() => onChordClick?.(c)}
+                title={`Open ${c} details`}
+                className="px-2.5 py-1 rounded-lg font-bold text-sm border bg-panel border-border text-gray-200 transition-all outline-none hover:border-accent/50 hover:text-accent focus-visible:ring-2 focus-visible:ring-accent">
+                {c}
+              </button>
+              {i < chords.length - 1 && <span className="text-gray-700 text-xs">→</span>}
+            </span>
+          ))}
+        </div>
+      )}
+      {prog?.tip && <p className="text-xs text-gray-400 leading-snug">{prog.tip}</p>}
+      {songs.length > 0 && (
+        <p className="text-[11px] text-gray-500 mt-1">{songs.slice(0, 3).join(' · ')}</p>
+      )}
+    </div>
+  )
+}
+
+// ─── Explore section — KB progression browser + famous progressions ──────────
+// Props: keyInfo (chords render in the detected key; C until one is known),
+// levels + onToggleLevel (shell-owned shared filter), onChordClick (chord name
+// string → ChordDetailModal).
+export function ExploreSection({ keyInfo, levels, onToggleLevel, onChordClick }) {
+  const styles = useMemo(
+    () => Object.entries(kb ?? {}).map(([id, s]) => ({ id, label: s?.meta?.label ?? id })),
+    []
+  )
+  const [styleOverride, setStyleOverride] = useState(null)
+  const activeStyle = styleOverride ?? styles[0]?.id
+
+  const keyRootPc = parseChord(keyInfo?.root ?? '')?.rootPc ?? 0
+  const keyMode = keyInfo?.mode === 'minor' ? 'minor' : 'major'
+  const tonicName = `${NOTES[keyRootPc]}${keyMode === 'minor' ? 'm' : ''}`
+
+  const progressions = kb?.[activeStyle]?.progressions ?? []
+  const visible = progressions.filter(p => levels?.[levelOf(p)])
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Toolbar: style chips + shared level filter */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex items-center gap-1 flex-wrap">
+          {styles.map(s => {
+            const active = s.id === activeStyle
+            return (
+              <button key={s.id} type="button" aria-pressed={active}
+                onClick={() => setStyleOverride(s.id)}
+                className={`px-2.5 py-1 min-h-[32px] rounded-lg text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                  active
+                    ? 'bg-accent/20 border border-accent text-accent font-semibold'
+                    : 'border border-transparent text-gray-400 hover:text-gray-200 hover:border-border'
+                }`}>
+                {s.label}
+              </button>
+            )
+          })}
+        </div>
+        <div className="w-px h-5 bg-border shrink-0" />
+        <LevelChips levels={levels} onToggle={onToggleLevel} />
+      </div>
+
+      <p className="text-[11px] text-gray-500">
+        Chords shown in {NOTES[keyRootPc]} {keyMode}{keyInfo?.root ? '' : ' (no key detected yet)'} · tap any chord for voicings
+      </p>
+
+      {/* KB progression cards */}
+      {visible.length > 0 ? (
+        <div className="flex flex-col gap-3">
+          {visible.map((p, i) => (
+            <KbProgressionCard key={p?.id ?? i} prog={p} keyRootPc={keyRootPc} onChordClick={onChordClick} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-gray-400 py-2">
+          {progressions.length === 0
+            ? 'No progressions authored for this style yet.'
+            : 'Nothing at the selected level for this style — flip the level filter back on.'}
+        </p>
+      )}
+
+      {/* Famous progressions (exempt from the level filter — untagged corpus) */}
+      <div className="flex flex-col gap-2 border-t border-border pt-3">
+        <h4 className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+          Famous progressions <span className="normal-case tracking-normal font-normal">· not affected by the level filter</span>
+        </h4>
+        <ProgressionCards chordName={tonicName} onChordClick={onChordClick} />
+      </div>
+    </div>
+  )
+}
+
+// ─── Voicings section — picker (follows the live chord) → VoicingBrowser ─────
+// Props: keyInfo + chordHistory feed the quick-pick chips; currentChord re-aims
+// the picker whenever a new chord commits (manual picks hold until then).
+export function VoicingsSection({ keyInfo, chordHistory, currentChord }) {
   const [root, setRoot]       = useState('C')
   const [typeKey, setTypeKey] = useState('maj')
-  const [view, setView]       = useState('guitar')   // guitar | piano | progressions
   const [active, setActive]   = useState('')
 
-  const chordName = root + (CHORD_TYPES[typeKey]?.suffix ?? '')
+  useEffect(() => {
+    if (!currentChord) return
+    const p = parseChord(currentChord)
+    if (p) { setRoot(NOTES[p.rootPc]); setTypeKey(p.type); setActive(currentChord) }
+  }, [currentChord])
 
   function selectChord(chord) {
     setActive(chord)
@@ -169,79 +396,58 @@ export default function ExplorePanel({ keyInfo, chordHistory, onChordClick }) {
     if (p) { setRoot(NOTES[p.rootPc]); setTypeKey(p.type) }
   }
 
-  // Context-aware quick-picks
-  const recentChords  = [...new Set([...(chordHistory ?? [])].reverse())].slice(0, 12)
-  const keyChords     = keyInfo?.root ? getChordsInKey(keyInfo.root, keyInfo.mode ?? 'major') : []
+  const recentChords = [...new Set([...(chordHistory ?? [])].reverse())].slice(0, 12)
+  const keyChords    = keyInfo?.root ? getChordsInKey(keyInfo.root, keyInfo.mode ?? 'major') : []
+  const rootPc       = parseChord(root)?.rootPc ?? 0
+
+  return (
+    <div className="flex flex-col gap-4">
+      {(recentChords.length > 0 || keyChords.length > 0) && (
+        <div className="flex flex-col gap-2.5 p-3 bg-surface border border-border rounded-xl">
+          <ChipRow label="History" chords={recentChords} active={active} keyInfo={keyInfo} onSelect={selectChord} />
+          {keyChords.length > 0 && recentChords.length > 0 && <div className="h-px bg-border" />}
+          {keyChords.length > 0 && (
+            <ChipRow
+              label={keyInfo.root + ' ' + (keyInfo.mode ?? '')}
+              chords={keyChords} active={active} keyInfo={keyInfo} onSelect={selectChord}
+            />
+          )}
+        </div>
+      )}
+
+      <ChordPickerToolbar
+        root={root}
+        typeKey={typeKey}
+        onRootChange={n => { setRoot(n); setActive('') }}
+        onTypeChange={k => { setTypeKey(k); setActive('') }}
+      />
+
+      <VoicingBrowser rootPc={rootPc} quality={typeKey} />
+    </div>
+  )
+}
+
+// ─── Standalone panel (thin composition; orphaned — kept mountable) ──────────
+export default function ExplorePanel({ keyInfo, chordHistory, currentChord, onChordClick }) {
+  const [open, setOpen] = useState(false)
+  const [levels, setLevels] = useState({ foundation: true, intermediate: true })
+  const toggleLevel = (key) => setLevels(prev => {
+    const next = { ...prev, [key]: !prev[key] }
+    return (next.foundation || next.intermediate) ? next : prev // both can't be off
+  })
 
   return (
     <div className="mb-3 bg-panel border border-border rounded-xl overflow-hidden">
-      <button onClick={() => setOpen(v => !v)}
+      <button onClick={() => setOpen(v => !v)} aria-expanded={open}
         className="w-full flex items-center justify-between px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-all">
         <span>EXPLORE ANY CHORD</span>
         <span>{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
-        <div className="border-t border-border p-4 flex flex-col gap-4">
-
-          {/* ── Context quick-picks ── */}
-          {(recentChords.length > 0 || keyChords.length > 0) && (
-            <div className="flex flex-col gap-2.5 p-3 bg-surface border border-border rounded-xl">
-              <ChipRow label="History" chords={recentChords} active={active} keyInfo={keyInfo} onSelect={selectChord} />
-              {keyChords.length > 0 && recentChords.length > 0 && <div className="h-px bg-border" />}
-              {keyChords.length > 0 && (
-                <ChipRow
-                  label={keyInfo.root + ' ' + (keyInfo.mode ?? '')}
-                  chords={keyChords} active={active} keyInfo={keyInfo} onSelect={selectChord}
-                />
-              )}
-            </div>
-          )}
-
-          {/* ── Manual chord picker ── */}
-          <div className="flex flex-wrap gap-2 items-center p-3 bg-surface border border-border rounded-xl">
-            <div className="flex flex-wrap gap-1">
-              {NOTES.map(n => (
-                <button key={n} onClick={() => { setRoot(n); setActive('') }}
-                  className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${
-                    root === n ? 'bg-accent text-white' : 'bg-border text-gray-400 hover:text-white'
-                  }`}>
-                  {n}
-                </button>
-              ))}
-            </div>
-            <div className="w-px h-5 bg-border shrink-0" />
-            <div className="relative">
-              <select value={typeKey} onChange={e => { setTypeKey(e.target.value); setActive('') }}
-                className="appearance-none bg-panel border border-border rounded-lg pl-2 pr-6 py-1 text-xs text-gray-200 cursor-pointer focus:outline-none focus:border-accent">
-                {CHORD_TYPE_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </select>
-              <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs">▾</span>
-            </div>
-            <div className="text-2xl font-black text-accent ml-2">{chordName}</div>
-          </div>
-
-          {/* ── View tabs ── */}
-          <div className="flex gap-1 bg-surface border border-border rounded-xl p-1 w-fit">
-            {[
-              { key: 'guitar',       label: '🎸 Guitar Voicings' },
-              { key: 'piano',        label: '🎹 Piano Techniques' },
-              { key: 'progressions', label: '🎵 Progressions' },
-            ].map(t => (
-              <button key={t.key} onClick={() => setView(t.key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                  view === t.key ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'
-                }`}>
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* ── Content ── */}
-          {view === 'guitar'       && <GuitarGrid       chordName={chordName} />}
-          {view === 'piano'        && <PianoGrid         chordName={chordName} />}
-          {view === 'progressions' && <ProgressionCards  chordName={chordName} onChordClick={c => { selectChord(c); onChordClick?.(c) }} />}
-
+        <div className="border-t border-border p-4 flex flex-col gap-6">
+          <ExploreSection keyInfo={keyInfo} levels={levels} onToggleLevel={toggleLevel} onChordClick={onChordClick} />
+          <VoicingsSection keyInfo={keyInfo} chordHistory={chordHistory} currentChord={currentChord} />
         </div>
       )}
     </div>
