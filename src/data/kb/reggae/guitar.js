@@ -179,4 +179,70 @@ export default {
       },
     ],
   },
+
+  // Structured licks (SCHEMA.md "Licks", task P-24). Written in a home key each
+  // (noted per lick) but key-agnostic in spirit — chordContext names the station.
+  // Every pitch hand-verified: s6=E s5=A s4=D s3=G s2=B s1=e (+fret, mod 12).
+  licks: [
+    {
+      // In A minor (i–♭VII = Am–G): the skank chords answered as a fill —
+      // the i's ♭3+5 pair (C+E), the ♭VII's 3+5 pair (B+D) two frets down,
+      // back home, root on top. Strictly in the vocal gaps.
+      id: 'reggae-skank-answer',
+      name: 'Skank-answer double-stop fill',
+      level: 'foundation',
+      chordContext: 'answer fill over the i–♭VII vamp, in the vocal gaps',
+      techniques: ['double-stop', 'vibrato'],
+      source: 'call-and-response fills in the Wailers style — Guitar World\'s Bob Marley rhythm-guitar lesson',
+      tab: [
+        { string: 3, fret: 5 },                            // C — the i's ♭3
+        { string: 2, fret: 5, technique: 'double-stop' },  // E — the i's 5: the minor pair
+        { string: 3, fret: 4 },                            // B — the ♭VII's 3, two frets down
+        { string: 2, fret: 3, technique: 'double-stop' },  // D — the ♭VII's 5: the pair moves with the chord
+        { string: 3, fret: 5 },                            // C — back home
+        { string: 2, fret: 5, technique: 'double-stop' },  // E
+        { string: 1, fret: 5, technique: 'vibrato' },      // A — the root caps the answer
+      ],
+    },
+    {
+      // In A minor, low register, palm-muted throughout: a minor-pentatonic
+      // line doubling the bassline in unison — the Lynn Taitt second-guitar
+      // job. Dull attack, locked exactly with the bass, never approximately.
+      id: 'reggae-bass-double',
+      name: 'Muted bass-doubling riddim line',
+      level: 'foundation',
+      chordContext: 'over the i — unison with the bassline',
+      techniques: ['ghost-note'],
+      source: 'the rocksteady bass-doubling role in Lynn Taitt\'s muted picking style — Wikipedia "Rocksteady"; Brian Keyo\'s Taitt tribute (tallawah.com)',
+      tab: [
+        { string: 6, fret: 5 },                            // A — root, palm-muted like everything here
+        { string: 6, fret: 5, technique: 'ghost-note' },   // muted pluck — the fluttering Taitt attack
+        { string: 6, fret: 8 },                            // C — ♭3
+        { string: 5, fret: 5 },                            // D — 4
+        { string: 5, fret: 7 },                            // E — 5
+        { string: 5, fret: 5 },                            // D — 4
+        { string: 6, fret: 8 },                            // C — ♭3
+        { string: 6, fret: 5 },                            // A — home; keep the attack dull to the end
+      ],
+    },
+    {
+      // In A: chromatic walk-up 6–♭7–7 into the root, timed so the root lands
+      // with the drum's drop (beat 3 of the one drop — beat 1 stays sacred and
+      // silent), answered by the 3+5 chop up top on the offbeat.
+      id: 'reggae-walkup-drop',
+      name: 'Chromatic walk into the one drop',
+      level: 'intermediate',
+      chordContext: 'pickup into the I — the root lands on the drop (beat 3)',
+      techniques: ['chromatic-approach', 'double-stop'],
+      source: 'in the style of rocksteady/early-reggae walk-ups (the Lynn Taitt-era bass-and-guitar lines — Wikipedia "Rocksteady", "One drop rhythm")',
+      tab: [
+        { string: 6, fret: 2 },                                  // F♯ — the 6
+        { string: 6, fret: 3, technique: 'chromatic-approach' }, // G — ♭7, passing
+        { string: 6, fret: 4, technique: 'chromatic-approach' }, // G♯ — 7, passing
+        { string: 6, fret: 5 },                                  // A — root, landing WITH the drop
+        { string: 3, fret: 6 },                                  // C♯ — the 3: jump up for the answer chop
+        { string: 2, fret: 5, technique: 'double-stop' },        // E — the 5: the skank answers on the offbeat
+      ],
+    },
+  ],
 }

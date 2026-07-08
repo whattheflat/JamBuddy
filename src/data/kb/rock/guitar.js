@@ -209,4 +209,95 @@ export default {
       },
     ],
   },
+
+  // Structured licks (SCHEMA.md "Licks", task P-24). Written in a home key each
+  // (noted per lick) but key-agnostic in spirit — chordContext names the station.
+  // Every pitch hand-verified: s6=E s5=A s4=D s3=G s2=B s1=e (+fret, mod 12).
+  licks: [
+    {
+      // In A: the 4 slid up to the 5 on the B string, the root stacked on top
+      // (E+A — the Berry 4ths dyad), hammered in triplets, then the ♭3→3 curl
+      // and home. The rock-and-roll intro figure.
+      id: 'rock-berry-double-stop',
+      name: 'Berry double-stop intro figure',
+      level: 'foundation',
+      chordContext: 'over the I — intro or turnaround energy',
+      techniques: ['slide', 'double-stop', 'hammer-on', 'vibrato'],
+      source: 'in the style of the "Johnny B. Goode" intro double-stops — Chuck Berry (1958); JustinGuitar song lesson SB-425',
+      tab: [
+        { string: 2, fret: 3 },                            // D — the 4, pickup two frets below
+        { string: 2, fret: 5, technique: 'slide' },        // E — the 5th, slid up the B string
+        { string: 1, fret: 5, technique: 'double-stop' },  // A — root on top: the Berry 4ths dyad lands
+        { string: 2, fret: 5 },                            // E — restrike the pair in triplets
+        { string: 1, fret: 5, technique: 'double-stop' },  // A
+        { string: 2, fret: 5 },                            // E
+        { string: 1, fret: 5, technique: 'double-stop' },  // A
+        { string: 3, fret: 5 },                            // C — ♭3
+        { string: 3, fret: 6, technique: 'hammer-on' },    // C♯ — the 3: the curl resolves up
+        { string: 1, fret: 5, technique: 'vibrato' },      // A — end on the root
+      ],
+    },
+    {
+      // In A, box 1 at fret 5: the B-string ♭7 (G) bent a whole step up to the
+      // root against the same root held on the top string — the beating unison,
+      // then the ♭3 answer and home. The Purple Haze-outro cliché.
+      id: 'rock-unison-bend',
+      name: 'Box-1 unison bend',
+      level: 'intermediate',
+      chordContext: 'over the I (or i) at the solo climax',
+      techniques: ['bend', 'double-stop', 'vibrato'],
+      source: 'the unison-bend cliché ("Purple Haze" outro lineage — Hendrix, Page, May); JustinGuitar unison bend technique BL-607',
+      tab: [
+        { string: 1, fret: 5 },                            // A — state the root first
+        { string: 2, fret: 8, technique: 'bend' },         // G — ♭7 bent a whole step up to A
+        { string: 1, fret: 5, technique: 'double-stop' },  // A — held on top: the unison pair beats
+        { string: 2, fret: 8, technique: 'bend' },         // bend it again
+        { string: 1, fret: 5, technique: 'double-stop' },  // A on top
+        { string: 1, fret: 8 },                            // C — the ♭3: blues grit over a major I
+        { string: 1, fret: 5, technique: 'vibrato' },      // A — resolve on the root
+      ],
+    },
+    {
+      // In A Mixolydian (I–♭VII–IV = A–G–D): climb the mode from the root and
+      // land the key's ♭7 (G) exactly as the ♭VII chord hits — it IS that
+      // chord's root — then let it fall a half step to F♯, the IV's 3rd. A
+      // voice-leading rail, rock edition.
+      id: 'rock-mixo-rail',
+      name: 'Mixolydian rail onto the ♭VII',
+      level: 'intermediate',
+      chordContext: 'I → ♭VII → IV vamp',
+      techniques: ['slide', 'vibrato'],
+      source: 'the I–♭VII–IV Mixolydian language ("All Right Now"/"Highway to Hell" triads) — GuitarPlayer "Master the Mixolydian Mode"; Fundamental Changes "Study the Mixolydian Mode Pt 1"',
+      tab: [
+        { string: 4, fret: 7 },                            // A — root, over the I
+        { string: 3, fret: 4 },                            // B — 2
+        { string: 3, fret: 6 },                            // C♯ — 3
+        { string: 3, fret: 7, technique: 'slide' },        // D — 4, slid into
+        { string: 2, fret: 5 },                            // E — 5
+        { string: 2, fret: 8, technique: 'vibrato' },      // G — the key's ♭7: the ♭VII's root, landed at the change
+        { string: 2, fret: 7 },                            // F♯ — falls a half step: the IV's 3rd
+        { string: 1, fret: 5, technique: 'vibrato' },      // A — the IV's 5th; home
+      ],
+    },
+    {
+      // In A minor, box 1: the descending pull-off cascade — two notes per
+      // string down the pentatonic, ending on the root an octave down. The
+      // stock rock run every soloist owns.
+      id: 'rock-box1-cascade',
+      name: 'Descending pull-off cascade',
+      level: 'foundation',
+      chordContext: 'over the i — works across the whole minor-key vamp',
+      techniques: ['pull-off', 'vibrato'],
+      source: 'the box-1 descending run — stock rock vocabulary; MusicRadar "50 rock guitar licks you need to know"; Guitar World "20 rock guitar licks"',
+      tab: [
+        { string: 1, fret: 8 },                            // C — ♭3
+        { string: 1, fret: 5, technique: 'pull-off' },     // A — root
+        { string: 2, fret: 8 },                            // G — ♭7
+        { string: 2, fret: 5, technique: 'pull-off' },     // E — 5
+        { string: 3, fret: 7 },                            // D — 4
+        { string: 3, fret: 5, technique: 'pull-off' },     // C — ♭3
+        { string: 4, fret: 7, technique: 'vibrato' },      // A — root, an octave down: land it
+      ],
+    },
+  ],
 }

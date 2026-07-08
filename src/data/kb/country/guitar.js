@@ -227,4 +227,88 @@ export default {
       },
     ],
   },
+
+  // Structured licks (SCHEMA.md "Licks", task P-24). Written in a home key each
+  // (noted per lick) but key-agnostic in spirit — chordContext names the station.
+  // Every pitch hand-verified: s6=E s5=A s4=D s3=G s2=B s1=e (+fret, mod 12).
+  licks: [
+    {
+      // In G, open position: 2, ♭3 hammered to the 3, then 5–6 up to the open-G
+      // root landed on the downbeat. THE bluegrass phrase-ending tag.
+      id: 'country-flatt-g-run',
+      name: 'The Lester Flatt G-run',
+      level: 'foundation',
+      chordContext: 'phrase-ending tag on the I',
+      techniques: ['hammer-on'],
+      source: 'the canonical Flatt & Scruggs tag — hvbluegrass.org "The Truth About the Lester Flatt G Run"',
+      tab: [
+        { string: 5, fret: 0 },                            // A — the 2
+        { string: 5, fret: 1, technique: 'hammer-on' },    // B♭ — the blue ♭3, hammered from the open string
+        { string: 5, fret: 2 },                            // B — the major 3: the curl resolves
+        { string: 4, fret: 0 },                            // D — 5
+        { string: 4, fret: 2 },                            // E — 6
+        { string: 3, fret: 0 },                            // G — root: land it ON the downbeat with the chord
+      ],
+    },
+    {
+      // In A, over the I7: hybrid-picked 3rds walking up the Mixolydian —
+      // 3+5 (C♯+E) → 4+6 (D+F♯) → 5+♭7 (E+G) — with clucked ghost notes
+      // between, resolving to the root on top. Shift the hand up with each pair.
+      id: 'country-chicken-thirds',
+      name: 'Chicken-pickin\' 3rds walk-up',
+      level: 'intermediate',
+      chordContext: 'over the I7 — fills between vocal lines',
+      techniques: ['ghost-note', 'double-stop', 'slide', 'vibrato'],
+      source: 'in the style of Brent Mason\'s double-stop chicken pickin\' — Brent Mason, Nashville Chops & Western Swing Guitar (Hal Leonard); Sam Smiley\'s Brent Mason lick analyses',
+      tab: [
+        { string: 3, fret: 5, technique: 'ghost-note' },   // muted cluck — the chicken in the pickin'
+        { string: 3, fret: 6 },                            // C♯ — the 3
+        { string: 2, fret: 5, technique: 'double-stop' },  // E — the 5: first 3rd-pair
+        { string: 3, fret: 6, technique: 'ghost-note' },   // cluck between pairs
+        { string: 3, fret: 7 },                            // D — the 4
+        { string: 2, fret: 7, technique: 'double-stop' },  // F♯ — the 6: passing pair
+        { string: 2, fret: 8, technique: 'slide' },        // G — ♭7, top voice slides up the B string
+        { string: 3, fret: 9, technique: 'double-stop' },  // E — the 5: the dominant 5+♭7 pair lands
+        { string: 2, fret: 10, technique: 'vibrato' },     // A — root on top: resolve
+      ],
+    },
+    {
+      // In A: the classic pedal-steel move — bend the 2 (B) a whole step up to
+      // the 3 (C♯) on the G string and HOLD it while the 5th and then the root
+      // ring on top: the full triad stacks up, steel-style (an oblique bend).
+      id: 'country-pedal-steel-bend',
+      name: 'Pedal-steel bend into the 3rd',
+      level: 'intermediate',
+      chordContext: 'over the I — the money chord change',
+      techniques: ['bend', 'double-stop', 'vibrato'],
+      source: 'the oblique 2→3 steel bend — Premier Guitar "Twang 101: 6 Essential Pedal-Steel Bends"; Fundamental Changes "Country Guitar String Bending"',
+      tab: [
+        { string: 3, fret: 2 },                            // A — root pickup
+        { string: 3, fret: 4, technique: 'bend' },         // B — the 2, bent a whole step up to C♯ and HELD
+        { string: 2, fret: 5, technique: 'double-stop' },  // E — the 5th rings on top of the held bend
+        { string: 1, fret: 5, technique: 'vibrato' },      // A — root struck next, bend still holding: the triad stack
+      ],
+    },
+    {
+      // In G, open position: the banjo forward roll (thumb–index–middle)
+      // crosspicked across strings 3-2-1 — root, 3rd, high root cascading in
+      // even 8ths. No left-hand tricks: the ringing roll IS the technique.
+      id: 'country-forward-roll',
+      name: 'Forward-roll crosspicking',
+      level: 'foundation',
+      chordContext: 'over the I — keeps time like a banjo under a vocal',
+      techniques: [],
+      source: 'the Scruggs forward roll (T–I–M) adapted to guitar crosspicking — Wikipedia "Banjo roll"; Deering "The Four Essential 5-String Banjo Rolls"',
+      tab: [
+        { string: 3, fret: 0 },                            // G — root (thumb)
+        { string: 2, fret: 0 },                            // B — the 3 (index)
+        { string: 1, fret: 3 },                            // G — octave root (middle)
+        { string: 3, fret: 0 },                            // roll it again —
+        { string: 2, fret: 0 },                            // even 8ths,
+        { string: 1, fret: 3 },                            // every note ringing into the next
+        { string: 3, fret: 0 },                            // G
+        { string: 2, fret: 0 },                            // B — hand back at the top of the roll
+      ],
+    },
+  ],
 }
