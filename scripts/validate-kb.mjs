@@ -1,5 +1,10 @@
 // KB quality gate — validates src/data/kb/ against the contract in src/data/kb/SCHEMA.md.
 // Run: node scripts/validate-kb.mjs   (exit 1 on any error)
+//
+// Lib mode: scripts/smoke.mjs imports this file with KB_VALIDATE_AS_LIB=1 set to
+// reuse the exported pure checks (checkLick, LEVELS, LICK_TECHNIQUES) against
+// in-memory fixtures — same logic, no copy. When the env var is absent the
+// script runs the full KB validation as before.
 import { readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -15,6 +20,16 @@ const BASS_TOKENS = ['R', 'b3', '3', '5', '6', 'b7', '7', '9', 'O', 'chrom>', 'c
 const MIN_PROGRESSIONS = 4
 const MIN_PLAYS = 2
 const MAX_SPAN = 4
+
+// Optional progression/lick difficulty tags (SCHEMA.md — absent = 'foundation').
+export const LEVELS = ['foundation', 'intermediate']
+// Fixed technique vocabulary for licks — both the techniques[] summary and each
+// tab note's optional technique must come from this list (SCHEMA.md).
+export const LICK_TECHNIQUES = [
+  'hammer-on', 'pull-off', 'slide', 'bend',
+  'double-stop', 'ghost-note', 'chromatic-approach', 'vibrato',
+]
+const LICK_MAX_FRET = 15
 
 const errors = []
 const err = (where, msg) => errors.push(`${where}: ${msg}`)
@@ -105,10 +120,51 @@ function checkBassPlay(where, play, prog) {
   })
 }
 
+// Pure lick validation (SCHEMA.md "Licks" section). Returns an array of error
+// strings (already where-prefixed); mutates seenIds by adding the lick's id so
+// ids stay globally unique across ALL progressions and licks (same rule as
+// progression ids). Exported for reuse by scripts/smoke.mjs.
+export function checkLick(where, lick, style, seenIds) {
+  const out = []
+  const e = (msg) => out.push(`${where}: ${msg}`)
+  if (!lick || typeof lick !== 'object') { e('lick must be an object'); return out }
+  if (typeof lick.id !== 'string' || !lick.id.startsWith(`${style}-`))
+    e(`id must be a string starting with '${style}-'`)
+  else if (seenIds.has(lick.id)) e(`duplicate id '${lick.id}' (ids are global across progressions AND licks)`)
+  else seenIds.add(lick.id)
+  if (!lick.name) e('name missing')
+  if (!LEVELS.includes(lick.level)) e(`level must be one of ${LEVELS.join(' | ')}, got '${lick.level}'`)
+  if (typeof lick.chordContext !== 'string' || !lick.chordContext)
+    e("chordContext missing (which chord/station the lick fits, e.g. 'dom7' or 'over the I7')")
+  const summary = new Set()
+  if (!Array.isArray(lick.techniques)) e('techniques must be an array (may be empty for a plain-picked lick)')
+  else for (const t of lick.techniques) {
+    if (!LICK_TECHNIQUES.includes(t)) e(`unknown technique '${t}' — allowed: ${LICK_TECHNIQUES.join(', ')}`)
+    summary.add(t)
+  }
+  if (!Array.isArray(lick.tab) || !lick.tab.length) { e('tab must be a non-empty ordered array of notes'); return out }
+  lick.tab.forEach((note, i) => {
+    const nw = `tab[${i}]`
+    if (!note || typeof note !== 'object') return e(`${nw} must be an object {string, fret, technique?}`)
+    if (!Number.isInteger(note.string) || note.string < 1 || note.string > 6)
+      e(`${nw} string must be an integer 1–6 (1 = high e, 6 = low E), got ${JSON.stringify(note.string)}`)
+    if (!Number.isInteger(note.fret) || note.fret < 0 || note.fret > LICK_MAX_FRET)
+      e(`${nw} fret must be an integer 0–${LICK_MAX_FRET}, got ${JSON.stringify(note.fret)}`)
+    if (note.technique !== undefined) {
+      if (!LICK_TECHNIQUES.includes(note.technique))
+        e(`${nw} unknown technique '${note.technique}' — allowed: ${LICK_TECHNIQUES.join(', ')}`)
+      else if (!summary.has(note.technique))
+        e(`${nw} technique '${note.technique}' must also appear in the lick's techniques[] summary`)
+    }
+  })
+  return out
+}
+
 async function loadModule(path) {
   return (await import(pathToFileURL(path).href)).default
 }
 
+async function main() {
 const styleDirs = readdirSync(KB, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name)
 if (!styleDirs.length) { console.error('No style folders in src/data/kb/'); process.exit(1) }
 
@@ -116,7 +172,7 @@ const registry = existsSync(join(KB, 'index.js')) ? await loadModule(join(KB, 'i
 if (!registry) err('kb/index.js', 'registry missing')
 
 const allIds = new Set()
-let totals = { styles: 0, progressions: 0, plays: 0 }
+let totals = { styles: 0, progressions: 0, plays: 0, licks: 0 }
 
 for (const style of styleDirs) {
   const dir = join(KB, style)
@@ -147,6 +203,9 @@ for (const style of styleDirs) {
     if (!MODES.includes(p.mode)) err(pw, `unknown mode '${p.mode}'`)
     if (!Array.isArray(p.songs) || !p.songs.length) err(pw, 'songs missing')
     if (!p.tip) err(pw, 'tip missing')
+    // Optional difficulty tag — absent means 'foundation' (consumer default).
+    if (p.level !== undefined && !LEVELS.includes(p.level))
+      err(pw, `level, when present, must be one of ${LEVELS.join(' | ')} — got '${p.level}'`)
   }
   totals.styles++; totals.progressions += progs.length
 
@@ -181,6 +240,20 @@ for (const style of styleDirs) {
         })
       })
     }
+
+    // Optional structured licks (SCHEMA.md "Licks") — a top-level `licks` key
+    // on the instrument pack. Absent is fine; when present it must validate.
+    if (pack.licks !== undefined) {
+      if (!Array.isArray(pack.licks) || !pack.licks.length) {
+        err(iw, 'licks, when present, must be a non-empty array')
+      } else {
+        pack.licks.forEach((lick, li) => {
+          const lkw = `${iw} licks[${li}] "${lick?.id ?? '?'}"`
+          for (const m of checkLick(lkw, lick, style, allIds)) errors.push(m)
+        })
+        totals.licks += pack.licks.length
+      }
+    }
   }
 }
 
@@ -189,4 +262,11 @@ if (errors.length) {
   for (const e of errors) console.error('  ' + e)
   process.exit(1)
 }
-console.log(`✓ KB valid — ${totals.styles} style(s), ${totals.progressions} progressions, ${totals.plays} plays`)
+const lickNote = totals.licks ? `, ${totals.licks} licks` : ''
+console.log(`✓ KB valid — ${totals.styles} style(s), ${totals.progressions} progressions, ${totals.plays} plays${lickNote}`)
+}
+
+// Run the full validation unless imported as a library (see header comment).
+// Safe-by-default: an unset env var always means "run" — the gate can't be
+// skipped by a path-comparison quirk.
+if (!process.env.KB_VALIDATE_AS_LIB) await main()

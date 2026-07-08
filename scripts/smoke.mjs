@@ -394,7 +394,147 @@ for (const quality of QUALITIES) {
   })
 }
 
-// ─── 4. Summary + exit code ───────────────────────────────────────────────────
+// ─── 4. Lick + level schema validation (C-20) ─────────────────────────────────
+//
+// Import the REAL validator in lib mode (KB_VALIDATE_AS_LIB skips the full-KB
+// run) and exercise its exported checkLick/LEVELS against in-memory fixtures:
+// a good lick must pass, and bad-vocab / bad-string-range / duplicate-id licks
+// must FAIL — proving the validator's lick rules actually bite.
+
+console.log('\nLick + level schema (validate-kb lib mode):')
+
+process.env.KB_VALIDATE_AS_LIB = '1'
+const kbv = await load('scripts/validate-kb.mjs')
+const { checkLick, LEVELS, LICK_TECHNIQUES } = kbv
+
+check('validate-kb exports checkLick / LEVELS / LICK_TECHNIQUES in lib mode', () => {
+  assert(typeof checkLick === 'function', 'checkLick is not a function')
+  assert(Array.isArray(LEVELS) && LEVELS.join(',') === 'foundation,intermediate',
+    `LEVELS must be exactly [foundation, intermediate], got ${JSON.stringify(LEVELS)}`)
+  assert(Array.isArray(LICK_TECHNIQUES) && LICK_TECHNIQUES.length === 8,
+    `expected the 8-word technique vocab, got ${JSON.stringify(LICK_TECHNIQUES)}`)
+  for (const t of ['hammer-on', 'pull-off', 'slide', 'bend', 'double-stop', 'ghost-note', 'chromatic-approach', 'vibrato'])
+    assert(LICK_TECHNIQUES.includes(t), `vocab missing '${t}'`)
+})
+
+// A realistic, fully-valid fixture (style-prefixed id, vocab techniques,
+// strings 1–6, frets 0–15, per-note techniques present in the summary).
+const goodLick = () => ({
+  id: 'blues-box1-roll',
+  name: 'B.B. box roll',
+  level: 'foundation',
+  chordContext: 'over the I7',
+  techniques: ['bend', 'vibrato'],
+  tab: [
+    { string: 2, fret: 8 },
+    { string: 1, fret: 8, technique: 'bend' },
+    { string: 1, fret: 10, technique: 'vibrato' },
+    { string: 2, fret: 8 },
+  ],
+})
+
+check('good in-memory lick fixture PASSES checkLick (0 errors)', () => {
+  const errs = checkLick('fixture', goodLick(), 'blues', new Set())
+  assert(errs.length === 0, `expected clean pass, got: ${errs.join('; ')}`)
+})
+
+check('bad-vocab lick FAILS (technique outside the fixed vocabulary)', () => {
+  const lick = goodLick()
+  lick.techniques = ['bend', 'tapping'] // 'tapping' is not in the vocab
+  const errs = checkLick('fixture', lick, 'blues', new Set())
+  assert(errs.length > 0, 'bad vocab was accepted')
+  assert(errs.some((e) => e.includes("'tapping'")), `no error names 'tapping': ${errs.join('; ')}`)
+})
+
+check('bad per-note technique FAILS (vocab enforced on tab notes too)', () => {
+  const lick = goodLick()
+  lick.tab[1].technique = 'sweep-picking'
+  const errs = checkLick('fixture', lick, 'blues', new Set())
+  assert(errs.some((e) => e.includes("'sweep-picking'")), `per-note vocab not enforced: ${errs.join('; ')}`)
+})
+
+check('bad-string-range lick FAILS (string 7 / string 0 rejected)', () => {
+  for (const bad of [7, 0]) {
+    const lick = goodLick()
+    lick.tab[0].string = bad
+    const errs = checkLick('fixture', lick, 'blues', new Set())
+    assert(errs.some((e) => e.includes('string must be an integer 1–6')),
+      `string ${bad} was accepted: ${errs.join('; ')}`)
+  }
+})
+
+check('bad-fret lick FAILS (fret 16 / negative / non-integer rejected)', () => {
+  for (const bad of [16, -1, 3.5]) {
+    const lick = goodLick()
+    lick.tab[0].fret = bad
+    const errs = checkLick('fixture', lick, 'blues', new Set())
+    assert(errs.some((e) => e.includes('fret must be an integer')),
+      `fret ${bad} was accepted: ${errs.join('; ')}`)
+  }
+})
+
+check('duplicate-id lick FAILS (ids global across progressions AND licks)', () => {
+  const ids = new Set()
+  assert(checkLick('fixture', goodLick(), 'blues', ids).length === 0, 'first insert should pass')
+  const errs = checkLick('fixture', goodLick(), 'blues', ids) // same id again
+  assert(errs.some((e) => e.includes('duplicate id')), `duplicate id was accepted: ${errs.join('; ')}`)
+  // Colliding with an existing PROGRESSION id must also fail (shared namespace).
+  const progIds = new Set(['blues-box1-roll'])
+  const errs2 = checkLick('fixture', goodLick(), 'blues', progIds)
+  assert(errs2.some((e) => e.includes('duplicate id')), 'collision with a progression id was accepted')
+})
+
+check('wrong style prefix / bad level / empty tab all FAIL', () => {
+  const wrongPrefix = goodLick(); wrongPrefix.id = 'jazz-box1-roll'
+  assert(checkLick('fixture', wrongPrefix, 'blues', new Set()).some((e) => e.includes("starting with 'blues-'")),
+    'wrong style prefix accepted')
+  const badLevel = goodLick(); badLevel.level = 'advanced'
+  assert(checkLick('fixture', badLevel, 'blues', new Set()).some((e) => e.includes('level must be one of')),
+    "level 'advanced' accepted")
+  const emptyTab = goodLick(); emptyTab.tab = []
+  assert(checkLick('fixture', emptyTab, 'blues', new Set()).some((e) => e.includes('tab must be a non-empty')),
+    'empty tab accepted')
+})
+
+check('per-note technique missing from techniques[] summary FAILS (card tags stay honest)', () => {
+  const lick = goodLick()
+  lick.tab[2].technique = 'slide' // valid vocab, but not in techniques: [bend, vibrato]
+  const errs = checkLick('fixture', lick, 'blues', new Set())
+  assert(errs.some((e) => e.includes("must also appear in the lick's techniques[]")),
+    `summary consistency not enforced: ${errs.join('; ')}`)
+})
+
+// Progression `level` is optional in the KB — assert today's KB either omits it
+// or uses a legal value (guards P-20's tagging against typos reaching main).
+check("every KB progression 'level', when present, is foundation|intermediate", () => {
+  for (const styleName of styleNames) {
+    for (const p of kb[styleName]?.progressions ?? []) {
+      if (p.level !== undefined) {
+        assert(LEVELS.includes(p.level), `${styleName}/${p.id}: bad level '${p.level}'`)
+      }
+    }
+  }
+})
+
+// Same guard for any licks already shipped in the KB: run the REAL packs'
+// licks (if any) through checkLick — the registry and the validator must agree.
+check('every KB pack licks[] entry (if any) passes checkLick', () => {
+  const ids = new Set()
+  for (const styleName of styleNames) {
+    const instruments = kb[styleName]?.instruments ?? {}
+    for (const [inst, pack] of Object.entries(instruments)) {
+      if (pack?.licks === undefined) continue
+      assert(Array.isArray(pack.licks) && pack.licks.length,
+        `${styleName}/${inst}: licks, when present, must be a non-empty array`)
+      for (const lick of pack.licks) {
+        const errs = checkLick(`${styleName}/${inst} ${lick?.id ?? '?'}`, lick, styleName, ids)
+        assert(errs.length === 0, errs.join('; '))
+      }
+    }
+  }
+})
+
+// ─── 5. Summary + exit code ───────────────────────────────────────────────────
 
 const total = passed + failures.length
 console.log('')
