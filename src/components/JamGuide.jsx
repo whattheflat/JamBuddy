@@ -4,6 +4,8 @@ import { buildLoopIndex, matchLoopToProgression, findLoopPosition, chordRootPC }
 import { NOTES, CHORD_TYPES } from '../lib/theory'
 import RoadmapTrack from './RoadmapTrack'
 import ChordDiagram from './ChordDiagram'
+import MiniPiano from './MiniPiano'
+import { pianoVoicingChain } from '../lib/piano'
 
 // ─── JamGuide — the Roadmap bottom dock ───────────────────────────────────────
 //
@@ -23,12 +25,16 @@ import ChordDiagram from './ChordDiagram'
 //   bpm                 : number | null     — live tempo from the onset pipeline
 //   currentChord        : string | undefined — most recent committed chord
 
-// Display order for instrument tabs; availability is derived from the KB, not hardcoded.
+// Display order for instrument tabs; availability is derived from the KB, not
+// hardcoded — EXCEPT piano, which is always available: its voicings are COMPUTED
+// from the progression's degrees+qualities via src/lib/piano.js (L-10/L-11), so
+// no authored KB piano pack is required.
 const INSTRUMENTS = [
   { id: 'guitar', label: 'Guitar', icon: '🎸' },
   { id: 'piano',  label: 'Piano',  icon: '🎹' },
   { id: 'bass',   label: 'Bass',   icon: '🎵' },
 ]
+const COMPUTED_INSTRUMENTS = new Set(['piano'])
 
 export default function JamGuide({ detectedProgression, keyInfo, chordHistory = [], bpm, currentChord, onFocusChord }) {
   const [open, setOpen] = useState(false)
@@ -103,32 +109,49 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
     return (((position - match.rotation) % n) + n) % n
   }, [match.matched, match.progression, match.rotation, position])
 
-  // ── Per-station voicing shapes from the KB ──────────────────────────────────
-  // For the matched style + progression id, pull the recommended guitar play
-  // (the first play). Its `chords` array is in canonical KB order — chords[i]
-  // aligns 1:1 with progression.degrees[i] (the same station order RoadmapTrack
-  // renders). Each entry: { shape, note }. A station with no shape → graceful gap.
+  // ── Per-station voicings ────────────────────────────────────────────────────
+  // Stations are canonical KB order — index i aligns 1:1 with
+  // progression.degrees[i] (the same station order RoadmapTrack renders). Each
+  // entry carries the station's chord identity ({rootPc, quality, label, rn} —
+  // the tap-to-fretboard contract) plus an instrument-specific payload:
+  //   guitar → `shape`: from the recommended KB guitar play (the first play);
+  //            its `chords` array is canonical order too. No shape → graceful gap.
+  //   piano  → `voicing`: COMPUTED via pianoVoicingChain over the whole loop in
+  //            canonical order, so each station's register threads from the
+  //            previous one (minimal movement between stations). The station's
+  //            rootPc is attached so MiniPiano marks the root key ("R") reliably.
   const stationVoicings = useMemo(() => {
-    if (!match.matched || instrument !== 'guitar') return []
+    if (!match.matched || (instrument !== 'guitar' && instrument !== 'piano')) return []
     const prog = match.progression
-    const styleId = match.style
-    const plays = kb[styleId]?.instruments?.guitar?.plays?.[prog?.id]
-    const play = Array.isArray(plays) ? plays[0] : null
-    const chords = play?.chords ?? []
     const degrees = prog?.degrees ?? []
     const qualities = prog?.qualities ?? []
-    return degrees.map((deg, i) => {
+    const stations = degrees.map((deg, i) => {
       const rootPc = (((keyRoot + deg) % 12) + 12) % 12
       const noteName = NOTES[rootPc]
       const suffix = CHORD_TYPES[qualities[i]]?.suffix ?? ''
       return {
-        shape: chords[i]?.shape ?? null,
+        shape: null,
+        voicing: null,
         rootPc,
         quality: qualities[i] ?? 'maj',
         label: `${noteName}${suffix}`,
         rn: prog?.rn?.[i] ?? '',
       }
     })
+    if (instrument === 'guitar') {
+      const plays = kb[match.style]?.instruments?.guitar?.plays?.[prog?.id]
+      const play = Array.isArray(plays) ? plays[0] : null
+      const chords = play?.chords ?? []
+      for (let i = 0; i < stations.length; i++) {
+        stations[i].shape = chords[i]?.shape ?? null
+      }
+    } else {
+      const chain = pianoVoicingChain(stations.map(({ rootPc, quality }) => ({ rootPc, quality })))
+      for (let i = 0; i < stations.length; i++) {
+        stations[i].voicing = chain[i] ? { ...chain[i], rootPc: stations[i].rootPc } : null
+      }
+    }
+    return stations
   }, [match.matched, match.progression, match.style, instrument, keyRoot])
 
   // ── Tap-to-enlarge: which station's voicing is expanded (full diagram). ──
@@ -184,7 +207,8 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
             {/* Instrument tabs */}
             <div className="flex items-center gap-1">
               {INSTRUMENTS.map(inst => {
-                const enabled = availableInstruments.has(inst.id)
+                // Computed instruments (piano) need no KB pack — always selectable.
+                const enabled = COMPUTED_INSTRUMENTS.has(inst.id) || availableInstruments.has(inst.id)
                 const active = enabled && inst.id === instrument
                 return (
                   <button
@@ -267,9 +291,10 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
 
 // ─── RoadmapAssembly — the live panel body ────────────────────────────────────
 //
-// Composes RoadmapTrack (the improv highway) with a secondary voicing strip of
-// ChordDiagram thumbnails (one per station, canonical KB order). Tapping a
-// thumbnail enlarges it to a full diagram inline. The active station auto-scrolls
+// Composes RoadmapTrack (the improv highway) with a secondary voicing strip
+// (one thumbnail per station, canonical KB order): ChordDiagram when a station
+// carries a guitar `shape`, MiniPiano when it carries a computed piano `voicing`
+// (L-11 — the piano tab). Tapping a thumbnail enlarges it to a full view inline. The active station auto-scrolls
 // into view. Narrow viewports (< ~640px) reflow: the strip wraps and the whole
 // panel scrolls vertically rather than forcing a wide horizontal layout.
 function RoadmapAssembly({
@@ -339,13 +364,24 @@ function RoadmapAssembly({
                   }
                   style={{ opacity: isNow ? 1 : 0.85 }}
                 >
-                  <ChordDiagram
-                    shape={st.shape}
-                    keyRoot={keyRoot}
-                    rootPc={st.rootPc}
-                    size="thumb"
-                    label={st.label}
-                  />
+                  {st.voicing ? (
+                    <>
+                      <MiniPiano voicing={st.voicing} size="thumb" />
+                      {/* MiniPiano has no built-in chord label; mirror ChordDiagram's
+                          thumb label (text-gray-300, 9px) so the station stays named. */}
+                      <span className="text-gray-300 leading-none" style={{ fontSize: 9 }}>
+                        {st.label}
+                      </span>
+                    </>
+                  ) : (
+                    <ChordDiagram
+                      shape={st.shape}
+                      keyRoot={keyRoot}
+                      rootPc={st.rootPc}
+                      size="thumb"
+                      label={st.label}
+                    />
+                  )}
                   {st.rn && (
                     <span className="text-[9px] font-medium uppercase tracking-wide text-gray-500">
                       {st.rn}
@@ -360,13 +396,22 @@ function RoadmapAssembly({
               lives here instead — see D-02 return note). */}
           {selected && (
             <div className="mt-3 flex flex-col items-center gap-2 border-t border-border pt-3">
-              <ChordDiagram
-                shape={selected.shape}
-                keyRoot={keyRoot}
-                rootPc={selected.rootPc}
-                size="full"
-                label={`${selected.label}${selected.rn ? ` · ${selected.rn}` : ''}`}
-              />
+              {selected.voicing ? (
+                <>
+                  <MiniPiano voicing={selected.voicing} size="full" />
+                  <span className="text-gray-300 leading-none" style={{ fontSize: 12 }}>
+                    {`${selected.label}${selected.rn ? ` · ${selected.rn}` : ''}`}
+                  </span>
+                </>
+              ) : (
+                <ChordDiagram
+                  shape={selected.shape}
+                  keyRoot={keyRoot}
+                  rootPc={selected.rootPc}
+                  size="full"
+                  label={`${selected.label}${selected.rn ? ` · ${selected.rn}` : ''}`}
+                />
+              )}
               <button
                 type="button"
                 onClick={() => onSelectStation(null)}
