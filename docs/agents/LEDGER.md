@@ -40,7 +40,7 @@ The shared queue all agents read and write. Lifecycle and rules: [`PROTOCOL.md`]
 | P-24 | Licks pack #2: 3–4 licks each for **rock, country, reggae** guitar (C-20 schema; same bar as P-21 — playable as written, honest sources) | content | done | C-20, P-21 | `src/data/kb/rock/guitar.js`, `src/data/kb/country/guitar.js`, `src/data/kb/reggae/guitar.js` | validator green with ~21+ licks; every note serves its chordContext (Critic verifies) |
 | L-24 | JamGuide piano branch prefers an authored piano pack (SCHEMA piano recipes) over computed `pianoVoicingChain` when the style has one; fall back to computed otherwise. Recipe→notes convention: order inside each hand = voicing order low→high (documented at `jazz/piano.js:14`) | engineering | done | P-22, L-22 | `src/components/JamGuide.jsx` | jazz piano stations render the authored comp; other styles keep computed voicings; build + smoke green |
 | P-23 | KB expansion: **gospel piano** cell | content | done | P-22 | `src/data/kb/gospel/piano.js`, `src/data/kb/index.js` | validator green; renders in the piano tab |
-| C-21 | Sprint-end sweep: full build + validator + smoke, cross-browser sanity notes, PR body draft summarising the sprint for `main` | quality | claimed | L-21, L-22, P-21 | (none — verification) | all green; PR body ready |
+| C-21 | Sprint-end sweep: full build + validator + smoke, cross-browser sanity notes, PR body draft summarising the sprint for `main` | quality | done | L-21, L-22, P-21 | (none — verification) | all green; PR body ready |
 
 > Sequencing: L-11 ‖ D-20 ‖ L-20 ‖ C-20 are all file-disjoint and ready now. Then D-21 → L-21, and P-20/P-21/D-22 → L-22. P-22/P-23 fill spare iterations. Critic gates every task as usual.
 
@@ -117,13 +117,11 @@ Emphasis this sprint: **ship the Jam Guide MVP** (put the 8 guitar style packs o
 
 - **Retire `EducationPanel.jsx`** — confirmed orphaned (no importer anywhere in `src/`, D-20 gate verified); delete after the Knowledge Center ships. Fold `CurrentJamPanel`'s overlapping content (voicings/scales/similar progressions) into the Knowledge Center and retire it too.
 - **Level-tag `FAMOUS_PROGRESSIONS`** (`src/lib/education.js`, Professor): famous-progression cards are exempt from the level filter this sprint (Maestro call 2026-07-08, per D-20 open question 1).
-- **Piano thumb width polish (Muse):** 2–3-octave MiniPiano station thumbs are ~266–390 px — consider cropping to the voicing's octave span (L-11 gate observation).
-- **VoicingBrowser `show` prop (Muse, small):** add `show="guitar"|"piano"|"both"` (default both) so ChordDetailModal's instrument tabs can show only their own row — L-21 gate follow-up. Also stale JamGuide header comment (line ~19) cleanup.
-- **resolveDegree drift guard (Critic, tiny):** JamGuide.jsx carries a hand-synced copy of the validator's `resolveDegree` (src/ can't import scripts/); fold the L-24 gate's 16-degree × 14-quality drift test into `scripts/smoke.mjs` as a permanent guard.
+- **Drift guards in smoke (Critic, tiny):** two hand-synced duplications need permanent smoke checks — JamGuide.jsx's copy of the validator's `resolveDegree` (fold in the L-24 gate's 16-degree × 14-quality drift test) and the 8-word technique vocab duplicated between `validate-kb.mjs` `LICK_TECHNIQUES` and `LickCard.jsx` `TECHNIQUE_VOCAB` (C-21 finding).
 - **`pianoVoicing` should return `rootPc` (Luthier, tiny):** callers currently must attach it themselves (JamGuide and VoicingBrowser both do); returning it at the source removes the false-"R" foot-gun for future consumers (D-24 gate observation — NOT a live bug, both call sites verified correct 2026-07-08).
 - **Negative-fret shape handling inconsistency (Luthier, small):** `voicings.js` skips shapes that compute negative frets while `chordAudio.guitarShapeToNotes` slides them up an octave — pre-existing, flagged at the L-23 gate; unify someday.
 
-- **Jam Guide phase 2:** `MiniPiano.jsx` + piano recipe resolver (unblocks piano packs); bass pattern renderer.
+- **Jam Guide phase 3:** bass pattern renderer (guitar → piano → **bass** roadmap; MiniPiano + piano recipe resolver shipped in sprint-knowledge-center).
 - **Content:** piano packs (jazz → gospel → neo-soul first), then bass packs (blues → jazz → funk first) — see `docs/kb-backlog.md`.
 - **`guideTones` third bug (L-12, Luthier — small):** `guideTones` takes `ints[1]` as the "third", so `add9` `[0,2,4,7]` reports its **9th (pc 2)** as the 3rd instead of the major 3rd (pc 4) — wrong "3rd" lane/badge for add9 (live in gospel + pop-axis Cadd9). Pre-existing since L-01b; flagged by Critic during the D-03 re-gate. Fix: pick the actual 3rd/4th interval (3 or 4, or sus 2/5) rather than positional `ints[1]`. Smoke + a guideTones truth-table check.
 - **Learning features (Professor + Luthier):** drills tab seeded from `docs/learn-curriculum.md`; target-note highlighting; ear-training quiz on own chord history; pocket report from the onset pipeline.
