@@ -54,6 +54,85 @@ const SECTIONS = [
   { id: 'licks',    label: 'Licks & Techniques' },
 ]
 
+// ─── Authored piano recipes → MiniPiano voicings (L-24) ───────────────────────
+//
+// A style may ship an authored piano pack (SCHEMA.md "Piano play"): per-chord
+// degree recipes like { LH: ['3','5','7','9'] }. When the matched style has one
+// for the matched progression, the piano tab prefers the FIRST play's recipes
+// over the computed `pianoVoicingChain` — the recipes already encode the play's
+// voice-leading choices per station, so they are NOT re-threaded. Styles without
+// a piano pack (and any station whose recipe fails to resolve) fall back to the
+// computed chain, per-station — malformed data must never crash the panel.
+
+// Resolve a degree string ('3', 'b9', '13'…) to a pitch-class offset from the
+// chord root, through the quality's intervals where the degree is quality-
+// dependent ('3' → ♭3 for min7, '7' → the chord's actual 7th…). This mirrors
+// `resolveDegree` in scripts/validate-kb.mjs — the KB contract's reference
+// implementation — replicated here because src/ must not import from scripts/.
+// Keep the two in sync by hand.
+function resolveDegree(deg, quality) {
+  const iv = CHORD_TYPES[quality]?.intervals
+  if (!iv) return null
+  const fixed = { 1: 0, b9: 1, 9: 2, '#9': 3, 11: 5, '#11': 6, b5: 6, b13: 8, 13: 9, 6: 9, b3: 3, b7: 10 }
+  if (deg === '3') return iv.find(i => i === 3 || i === 4) ?? iv.find(i => i === 2 || i === 5) ?? null
+  if (deg === '5') return iv.find(i => i === 6 || i === 7 || i === 8) ?? null
+  if (deg === '7') return iv.find(i => i === 9 || i === 10 || i === 11) ?? null
+  return fixed[deg] ?? null
+}
+
+// Convert one authored recipe into the MiniPiano `voicing` shape
+// ({notes, pcs, bass, label, rootPc}). Placement follows the documented recipe
+// convention (jazz/piano.js header): the order inside each hand IS the voicing
+// order, low → high — so each note lands strictly above the previous one, in the
+// nearest octave; the RH stacks on above the LH's top note (lh below rh). The
+// octave anchor puts the bass in the first octave of MiniPiano's absolute-note
+// space ([0,36], 0 = C3) — the first octave where the whole voicing fits — so
+// the stack sits centrally in the rendered window. Returns null on ANY problem
+// (missing/malformed recipe, unresolvable degree, span past the window) so the
+// caller can fall back to the computed voicing for that station.
+function recipeVoicing(recipe, rootPc, quality) {
+  try {
+    if (!recipe || typeof recipe !== 'object') return null
+    // Semitone offsets above the chord root, stacked strictly ascending.
+    const rel = []
+    const handLabels = []
+    let prev = null
+    for (const hand of ['LH', 'RH']) {
+      const degs = recipe[hand]
+      if (degs === undefined) continue
+      if (!Array.isArray(degs) || degs.length === 0) return null
+      for (const d of degs) {
+        const off = resolveDegree(String(d), quality)
+        if (off === null || off === undefined) return null
+        if (prev === null) {
+          prev = off // the bass voice sits at its plain offset above the root
+        } else {
+          let step = (((off - prev) % 12) + 12) % 12
+          if (step === 0) step = 12 // same pitch class → the next octave up
+          prev += step
+        }
+        rel.push(prev)
+      }
+      handLabels.push(`${hand} ${degs.join('-')}`)
+    }
+    if (rel.length === 0) return null
+    // Anchor: bass pitch class in the first octave; everything stacks above it.
+    const bass = (((rootPc + rel[0]) % 12) + 12) % 12
+    const notes = rel.map(r => bass + (r - rel[0]))
+    if (notes[notes.length - 1] > 36) return null // doesn't fit the keyboard window
+    return {
+      notes,
+      pcs: [...new Set(notes.map(n => ((n % 12) + 12) % 12))],
+      bass,
+      style: 'authored',
+      label: handLabels.join(' · '), // honest per-chord degrees, e.g. "LH 3-5-7-9"
+      rootPc,
+    }
+  } catch {
+    return null
+  }
+}
+
 export default function JamGuide({ detectedProgression, keyInfo, chordHistory = [], bpm, currentChord, onFocusChord, onChordClick }) {
   const [open, setOpen] = useState(false)
 
@@ -144,10 +223,15 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
   // the tap-to-fretboard contract) plus an instrument-specific payload:
   //   guitar → `shape`: from the recommended KB guitar play (the first play);
   //            its `chords` array is canonical order too. No shape → graceful gap.
-  //   piano  → `voicing`: COMPUTED via pianoVoicingChain over the whole loop in
-  //            canonical order, so each station's register threads from the
-  //            previous one (minimal movement between stations). The station's
-  //            rootPc is attached so MiniPiano marks the root key ("R") reliably.
+  //   piano  → `voicing`: an AUTHORED pack's recipes when the matched style ships
+  //            piano plays for this progression (L-24 — first play, converted via
+  //            recipeVoicing; the recipes carry their own voice-leading, so no
+  //            re-threading); otherwise COMPUTED via pianoVoicingChain over the
+  //            whole loop in canonical order, so each station's register threads
+  //            from the previous one (minimal movement between stations). A
+  //            station whose recipe fails to resolve falls back to the computed
+  //            chain individually. The station's rootPc is attached so MiniPiano
+  //            marks the root key ("R") reliably.
   const stationVoicings = useMemo(() => {
     if (!match.matched || (instrument !== 'guitar' && instrument !== 'piano')) return []
     const prog = match.progression
@@ -174,9 +258,21 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
         stations[i].shape = chords[i]?.shape ?? null
       }
     } else {
-      const chain = pianoVoicingChain(stations.map(({ rootPc, quality }) => ({ rootPc, quality })))
+      // Authored piano pack first (L-24): the matched style's first piano play
+      // for this progression, per-chord recipes resolved via recipeVoicing.
+      const pianoPlays = kb[match.style]?.instruments?.piano?.plays?.[prog?.id]
+      const play = Array.isArray(pianoPlays) && pianoPlays.length ? pianoPlays[0] : null
+      const authored = play
+        ? stations.map((st, i) => recipeVoicing(play.chords?.[i]?.recipe, st.rootPc, st.quality))
+        : null
+      // Computed fallback — only built when needed (no pack, or a recipe that
+      // failed to resolve). Identical to the pre-L-24 computed path.
+      const chain = (!authored || authored.some(v => !v))
+        ? pianoVoicingChain(stations.map(({ rootPc, quality }) => ({ rootPc, quality })))
+        : null
       for (let i = 0; i < stations.length; i++) {
-        stations[i].voicing = chain[i] ? { ...chain[i], rootPc: stations[i].rootPc } : null
+        stations[i].voicing = authored?.[i]
+          ?? (chain?.[i] ? { ...chain[i], rootPc: stations[i].rootPc } : null)
       }
     }
     return stations
@@ -480,8 +576,8 @@ function LicksSection({ styles, levels, onToggleLevel }) {
 //
 // Composes RoadmapTrack (the improv highway) with a secondary voicing strip
 // (one thumbnail per station, canonical KB order): ChordDiagram when a station
-// carries a guitar `shape`, MiniPiano when it carries a computed piano `voicing`
-// (L-11 — the piano tab). Tapping a thumbnail enlarges it to a full view inline. The active station auto-scrolls
+// carries a guitar `shape`, MiniPiano when it carries a piano `voicing` —
+// authored (L-24) or computed (L-11 — the piano tab). Tapping a thumbnail enlarges it to a full view inline. The active station auto-scrolls
 // into view. Narrow viewports (< ~640px) reflow: the strip wraps and the whole
 // panel scrolls vertically rather than forcing a wide horizontal layout.
 function RoadmapAssembly({
