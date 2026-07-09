@@ -1,38 +1,48 @@
-// VoicingBrowser — a standalone, playable voicing browser for ONE chord (task D-21).
+// VoicingBrowser — a playable voicing GALLERY for ONE chord (task D-30; was the
+// chip-switched browser of D-21/D-23).
 //
 // For a given { rootPc, quality } it shows every way the KB knows to voice that
-// chord, switchable via chips, each auditionable through the speakers:
+// chord — ALL AT ONCE, no chips, no selection state (user directive 2026-07-10:
+// "see all the variations G shape, C shape, etc in one view without having to
+// push a button. so they all line up next to each other"):
 //
-//   Guitar row — all `GUITAR_SHAPES[quality]` entries from src/lib/voicings.js
-//     that are placeable for this root (open shapes only in their native key,
-//     movable shapes only when the whole grip fits under fret 15), rendered via
-//     the existing <ChordDiagram/> ({rootStr, offsets} / {frets, onlyRoot} + rootPc).
-//   Piano row — the four src/lib/piano.js `pianoVoicing` styles
-//     (root / shell / rootlessA / rootlessB) rendered via <MiniPiano voicing/>,
-//     chips carrying each voicing's honest label (e.g. "rootless A (3-5-7-9)").
+//   Guitar section — every placeable `GUITAR_SHAPES[quality]` entry from
+//     src/lib/voicings.js (open shapes only in their native key, movable shapes
+//     only when the whole grip fits under fret 15), each cell = shape label +
+//     <ChordDiagram size="thumb"/> + its own ▶.
+//   Piano section — all four src/lib/piano.js `pianoVoicing` styles
+//     (root / shell / rootlessA / rootlessB), each cell = the voicing's honest
+//     label (e.g. "rootless A (3-5-7-9)") + <MiniPiano voicing size="thumb"/> +
+//     its own ▶.
 //
-// Playback: src/lib/chordAudio.js (L-20). Each row's ▶ plays the SELECTED
-// voicing; the previous sound is always stopped via the returned {stop} handle
-// before a new one starts (switching chips also stops it), so previews never
-// layer. First ▶ click is the user gesture that lazily creates the AudioContext.
+// Playback: src/lib/chordAudio.js (L-20). ONE live {stop} handle for the whole
+// gallery — any ▶ stops the previous sound before starting (chord change and
+// unmount also stop it), so previews never layer. First ▶ click is the user
+// gesture that lazily creates the AudioContext.
 //
-// Mount points (docs/design/knowledge-center.md §3 — wired by L-21/L-22, NOT here):
-// Knowledge Center Voicings section, ChordDetailModal Guitar/Piano tabs, and the
-// Jam Guide station-enlarge view. This component stays pure & prop-driven.
+// Mount points (wired by L-21/L-22, NOT here): Knowledge Center Voicings
+// section, ChordDetailModal Guitar/Piano tabs (show="guitar"/"piano", L-25),
+// and the Jam Guide station-enlarge view. This component stays pure & prop-driven.
+//
+// Layout: each instrument section is a flex-wrap gallery of fixed-content-width
+// cells, so it reflows to fewer columns (down to one cell per row) inside a
+// narrow modal or the Jam Guide dock — no horizontal scroll needed except the
+// per-cell guard around the widest MiniPiano thumbs (~266px for 2-octave
+// rootless voicings).
 //
 // Props:
 //   rootPc  — chord root pitch class 0–11 (default 0 = C)
 //   quality — CHORD_TYPES key; unknown values fall back to 'maj'
 //             (matching voicings.js / piano.js behaviour)
 //   show    — 'guitar' | 'piano' | 'both' (default 'both', task D-23): which
-//             instrument row(s) to render. Any other value falls back to both,
-//             so every pre-existing mount renders identically with no prop.
+//             instrument section(s) to render. Any other value falls back to
+//             both, so every pre-existing mount renders identically with no prop.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import ChordDiagram from './ChordDiagram'
 import MiniPiano from './MiniPiano'
 import { GUITAR_SHAPES } from '../lib/voicings'
-import { pianoVoicing, hasTrueSeventh } from '../lib/piano'
+import { pianoVoicing } from '../lib/piano'
 import { playVoicing, guitarShapeToNotes } from '../lib/chordAudio'
 import { NOTES, CHORD_TYPES } from '../lib/theory'
 
@@ -72,29 +82,8 @@ function chordName(rootPc, quality) {
 
 // ─── Small presentational atoms ───────────────────────────────────────────────
 
-// Selection chip. Active state puts small accent text on bg-surface (#0f0f0f),
-// where accent #a855f7 measures ≈4.8:1 — AA for small text (surface-background
-// rule); inactive text is gray-300 on surface (AA comfortable).
-function Chip({ active, onClick, title, children }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      title={title}
-      className={
-        'h-8 shrink-0 rounded-full border px-3 text-xs leading-none outline-none transition ' +
-        'focus-visible:ring-2 focus-visible:ring-accent ' +
-        (active
-          ? 'border-accent bg-surface font-semibold text-accent'
-          : 'border-border bg-surface text-gray-300 hover:border-gray-500 hover:text-gray-100')
-      }
-    >
-      {children}
-    </button>
-  )
-}
-
+// Per-cell ▶. Small accent text sits on bg-surface (#0f0f0f), where accent
+// #a855f7 measures ≈4.8:1 — AA for small text (surface-background rule).
 function PlayButton({ ariaLabel, onClick }) {
   return (
     <button
@@ -102,8 +91,8 @@ function PlayButton({ ariaLabel, onClick }) {
       aria-label={ariaLabel}
       onClick={onClick}
       className={
-        'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-accent ' +
-        'bg-surface px-3 text-xs font-semibold text-accent outline-none transition ' +
+        'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-accent ' +
+        'bg-surface px-2.5 text-xs font-semibold text-accent outline-none transition ' +
         'hover:bg-accent hover:text-black focus-visible:ring-2 focus-visible:ring-accent'
       }
     >
@@ -123,18 +112,39 @@ function SectionHeading({ children }) {
   )
 }
 
-// ─── The browser ──────────────────────────────────────────────────────────────
+// One gallery cell: label on top, diagram thumb, its own ▶ underneath.
+// bg-surface inside the bg-panel section gives the cells a quiet inlay border;
+// label is gray-300 on surface (AA comfortable at 11px semibold).
+function GalleryCell({ label, playLabel, onPlay, children }) {
+  return (
+    <figure className="flex min-w-0 flex-col items-center gap-1.5 rounded-md border border-border bg-surface p-2">
+      <figcaption
+        className="max-w-full break-words text-center text-[11px] font-medium leading-tight text-gray-300"
+        title={label}
+      >
+        {label}
+      </figcaption>
+      {/* Scroll guard: MiniPiano's SVG has a fixed pixel width (up to ~266px
+          for a 2-octave thumb window); scroll inside the cell on very narrow
+          viewports rather than letting it break the wrap layout. */}
+      <div className="max-w-full overflow-x-auto">{children}</div>
+      <PlayButton ariaLabel={playLabel} onClick={onPlay} />
+    </figure>
+  )
+}
+
+// ─── The gallery ──────────────────────────────────────────────────────────────
 
 export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'both' }) {
   const pc = mod12(Number.isFinite(rootPc) ? rootPc : 0)
   const name = chordName(pc, quality)
   const chordKey = `${pc}:${quality}`
 
-  // Row gating (D-23). 'guitar' hides the piano row, 'piano' hides the guitar
-  // row, anything else (incl. the 'both' default) shows both — so at least one
-  // row ALWAYS renders, and the mic-feedback microcopy below stays with it.
-  // Hooks stay unconditional; the shared stop-handle discipline (stopCurrent on
-  // chip switch / chord change / unmount) is untouched by hiding a row.
+  // Section gating (D-23). 'guitar' hides the piano section, 'piano' hides the
+  // guitar section, anything else (incl. the 'both' default) shows both — so at
+  // least one section ALWAYS renders, and the mic-feedback microcopy below
+  // stays with it. Hooks stay unconditional; the shared stop-handle discipline
+  // (stop on chord change / unmount) is untouched by hiding a section.
   const showGuitar = show !== 'piano'
   const showPiano = show !== 'guitar'
 
@@ -148,34 +158,17 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
     [pc, quality],
   )
 
-  const [guitarIdx, setGuitarIdx] = useState(0)
-  const [pianoStyle, setPianoStyle] = useState(hasTrueSeventh(quality) ? 'shell' : 'root')
-
-  // One live playback handle for the whole browser: any new play (or chip
-  // switch, chord change, unmount) stops the previous sound first — the
-  // L-20 {stop} contract, so previews never layer or leak.
+  // One live playback handle for the whole gallery: any new play (or chord
+  // change, or unmount) stops the previous sound first — the L-20 {stop}
+  // contract, so previews never layer or leak.
   const handleRef = useRef(null)
   const stopCurrent = () => {
     handleRef.current?.stop()
     handleRef.current = null
   }
 
-  // New chord → reset selections, silence the old preview.
-  useEffect(() => {
-    setGuitarIdx(0)
-    setPianoStyle(hasTrueSeventh(quality) ? 'shell' : 'root')
-    stopCurrent()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chordKey])
-
-  // Unmount → release whatever is still ringing.
-  useEffect(() => stopCurrent, [])
-
-  // Guard against a stale index during the one render before the reset effect.
-  const gi = Math.min(guitarIdx, Math.max(0, guitarShapes.length - 1))
-  const selectedShape = guitarShapes[gi] ?? null
-  const selectedPiano =
-    pianoOptions.find((o) => o.style === pianoStyle) ?? pianoOptions[0]
+  // Chord change → cleanup silences the old preview; same cleanup covers unmount.
+  useEffect(() => stopCurrent, [chordKey])
 
   // Known advisory (L-20 gate): when a movable shape's root lands on an open
   // string (base fret 0), ChordDiagram draws the fret-12 octave barre while
@@ -199,20 +192,14 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
 
   return (
     <div className="flex w-full min-w-0 flex-wrap gap-2">
-      {/* ── Guitar row ── */}
+      {/* ── Guitar section: every placeable shape, side by side ── */}
       {showGuitar && (
       <section
         aria-label={`Guitar voicings for ${name}`}
         className="min-w-[240px] flex-1 basis-[300px] rounded-lg border border-border bg-panel p-3"
       >
-        <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="mb-2">
           <SectionHeading>Guitar · {name}</SectionHeading>
-          {selectedShape && (
-            <PlayButton
-              ariaLabel={`Play ${name} — ${selectedShape.label} guitar voicing`}
-              onClick={() => playGuitar(selectedShape)}
-            />
-          )}
         </div>
 
         {guitarShapes.length === 0 ? (
@@ -221,86 +208,60 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
             No guitar shape sits comfortably for {name} — try the piano voicings.
           </p>
         ) : (
-          <>
-            <div
-              role="group"
-              aria-label={`${name} guitar shape options`}
-              className="mb-2 flex flex-wrap gap-1.5"
-            >
-              {guitarShapes.map((shape, i) => (
-                <Chip
-                  key={`${shape.label}-${i}`}
-                  active={i === gi}
-                  title={`${shape.label} shape`}
-                  onClick={() => {
-                    stopCurrent()
-                    setGuitarIdx(i)
-                  }}
-                >
-                  {shape.label}
-                </Chip>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-start gap-3">
-              <ChordDiagram
-                shape={selectedShape}
-                rootPc={pc}
-                size="full"
-                label={name}
-              />
-            </div>
-          </>
+          <div
+            role="group"
+            aria-label={`${name} guitar shapes — every shape shown, each playable`}
+            className="flex flex-wrap items-stretch gap-2"
+          >
+            {guitarShapes.map((shape, i) => (
+              <GalleryCell
+                key={`${shape.label}-${i}`}
+                label={shape.label}
+                playLabel={`Play ${name} — ${shape.label} guitar voicing`}
+                onPlay={() => playGuitar(shape)}
+              >
+                <ChordDiagram shape={shape} rootPc={pc} size="thumb" />
+              </GalleryCell>
+            ))}
+          </div>
         )}
       </section>
       )}
 
-      {/* ── Piano row ── */}
+      {/* ── Piano section: all four voicing styles, side by side ── */}
       {showPiano && (
       <section
         aria-label={`Piano voicings for ${name}`}
         className="min-w-[240px] flex-1 basis-[300px] rounded-lg border border-border bg-panel p-3"
       >
-        <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="mb-2">
           <SectionHeading>Piano · {name}</SectionHeading>
-          <PlayButton
-            ariaLabel={`Play ${name} — ${selectedPiano.voicing.label} piano voicing`}
-            onClick={() => playPiano(selectedPiano.voicing)}
-          />
         </div>
 
         <div
           role="group"
-          aria-label={`${name} piano voicing options`}
-          className="mb-2 flex flex-wrap gap-1.5"
+          aria-label={`${name} piano voicings — every style shown, each playable`}
+          className="flex flex-wrap items-stretch gap-2"
         >
+          {/* pianoVoicing() output carries no rootPc, and without it VoicingPiano
+              falls back to the LOWEST voice for its "R" badge — wrong for rootless
+              voicings, whose bass is the 3rd (A) or 7th (B). Supply the chord root. */}
           {pianoOptions.map(({ style, voicing }) => (
-            <Chip
+            <GalleryCell
               key={style}
-              active={style === selectedPiano.style}
-              title={voicing.label}
-              onClick={() => {
-                stopCurrent()
-                setPianoStyle(style)
-              }}
+              label={voicing.label}
+              playLabel={`Play ${name} — ${voicing.label} piano voicing`}
+              onPlay={() => playPiano(voicing)}
             >
-              {voicing.label}
-            </Chip>
+              <MiniPiano voicing={{ ...voicing, rootPc: pc }} size="thumb" />
+            </GalleryCell>
           ))}
-        </div>
-
-        {/* MiniPiano's SVG has a fixed pixel width (up to ~390px for 3 octaves);
-            scroll it on narrow columns rather than letting it break the layout.
-            pianoVoicing() output carries no rootPc, and without it VoicingPiano
-            falls back to the LOWEST voice for its "R" badge — wrong for rootless
-            voicings, whose bass is the 3rd (A) or 7th (B). Supply the chord root. */}
-        <div className="max-w-full overflow-x-auto">
-          <MiniPiano voicing={{ ...selectedPiano.voicing, rootPc: pc }} size="thumb" />
         </div>
       </section>
       )}
 
       {/* Mic-feedback caveat, per the L-20 header + D-20 §3 (microcopy tier).
-          At least one row always renders (see the gating above), so this stays. */}
+          At least one section always renders (see the gating above), so this stays. */}
       <p className="w-full basis-full text-[11px] text-gray-500">
         Previews play through your speakers — while the mic is live, detection may
         hear them.
