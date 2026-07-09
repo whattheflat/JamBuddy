@@ -66,7 +66,7 @@ const match = await load('src/lib/match.js')
 const { buildLoopIndex, matchLoopToProgression, findLoopPosition } = match
 
 const theory = await load('src/lib/theory.js')
-const { CHORD_TYPES } = theory
+const { CHORD_TYPES, detectRepeatingProgression } = theory
 
 const piano = await load('src/lib/piano.js')
 const { pianoVoicing, pianoVoicingChain, voicingToneSet, hasTrueSeventh } = piano
@@ -608,7 +608,68 @@ check('every KB piano pack recipe passes checkPianoRecipe (span ≤ 15 everywher
   console.log(`      (${recipes} live piano recipes checked)`)
 })
 
-// ─── 6. Summary + exit code ───────────────────────────────────────────────────
+// ─── 6. Loop-detection truth fixtures (C-30) ──────────────────────────────────
+//
+// Run every scripts/loop-fixtures.mjs case against the REAL
+// detectRepeatingProgression. Comparison is rotation-canonical on BOTH sides
+// (the fixture module replicates theory.js's private `canonicalize`), so a
+// correct loop reported from any rotation passes. Semantics:
+//   · no expectedFail + mismatch → ✗ smoke failure (regression in what works)
+//   · expectedFail + mismatch    → ⚠ annotated expected-fail (printed, counted,
+//                                    NOT a failure — this is L-30's todo list)
+//   · expectedFail + MATCH       → ✗ smoke failure: stale marker — the fixture
+//                                    now passes, L-30 must flip expectedFail off
+//
+// The failure map of the current algorithm lives in the fixture file header.
+
+console.log('\nLoop-detection fixtures (C-30):')
+
+const { LOOP_FIXTURES, canonicalLoop } = await load('scripts/loop-fixtures.mjs')
+let expectedFails = 0
+
+check('loop-fixtures module exports a non-empty fixture array + canonicalLoop', () => {
+  assert(Array.isArray(LOOP_FIXTURES) && LOOP_FIXTURES.length > 0, 'LOOP_FIXTURES missing/empty')
+  assert(typeof canonicalLoop === 'function', 'canonicalLoop is not a function')
+  const ids = new Set(LOOP_FIXTURES.map((f) => f.id))
+  assert(ids.size === LOOP_FIXTURES.length, 'duplicate fixture ids')
+  // canonicalLoop must be rotation-invariant (replica sanity: all rotations of a
+  // loop normalise to the same key — the property the comparisons rely on).
+  const key = canonicalLoop(['C', 'Am', 'F']).join(',')
+  assert(canonicalLoop(['Am', 'F', 'C']).join(',') === key && canonicalLoop(['F', 'C', 'Am']).join(',') === key,
+    'canonicalLoop is not rotation-invariant')
+})
+
+const loopKey = (loop) => (loop === null ? 'null' : canonicalLoop(loop).join(','))
+
+for (const f of LOOP_FIXTURES ?? []) {
+  const got = detectRepeatingProgression(f.history)
+  const gotKey = loopKey(Array.isArray(got) ? got : null)
+  const wantKey = loopKey(f.expect)
+  const matches = gotKey === wantKey
+  const label = `loop fixture '${f.id}' — ${f.description}`
+
+  if (!f.expectedFail) {
+    check(label, () => {
+      assert(matches, `got [${gotKey}], expected [${wantKey}]`)
+    })
+  } else if (!matches) {
+    // Documented current-algorithm failure — annotated, never silently skipped.
+    expectedFails++
+    console.log(`  ⚠ EXPECTED-FAIL ${label}\n      today: [${gotKey}] · contract (L-30): [${wantKey}]`)
+  } else {
+    // The algorithm now satisfies this contract — the marker is stale and MUST
+    // be removed (L-30's DoD is zero expectedFail markers). Fail loudly.
+    check(`${label} [STALE expectedFail marker]`, () => {
+      assert(false, `fixture PASSES (got [${gotKey}]) but is still marked expectedFail — remove the marker in scripts/loop-fixtures.mjs`)
+    })
+  }
+}
+
+if (expectedFails) {
+  console.log(`  (${expectedFails} annotated expected-fail(s) — the current detectRepeatingProgression's known gaps, awaiting L-30)`)
+}
+
+// ─── 7. Summary + exit code ───────────────────────────────────────────────────
 
 const total = passed + failures.length
 console.log('')
@@ -617,5 +678,6 @@ if (failures.length) {
   for (const f of failures) console.error('  ' + f)
   process.exit(1)
 }
-console.log(`✓ Smoke test passed — ${passed}/${total} checks green (${styleNames.length} styles, ${allIds.size} progressions)`)
+console.log(`✓ Smoke test passed — ${passed}/${total} checks green (${styleNames.length} styles, ${allIds.size} progressions)`
+  + (expectedFails ? ` · ${expectedFails} annotated loop-fixture expected-fail(s) awaiting L-30` : ''))
 process.exit(0)
