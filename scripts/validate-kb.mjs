@@ -2,9 +2,10 @@
 // Run: node scripts/validate-kb.mjs   (exit 1 on any error)
 //
 // Lib mode: scripts/smoke.mjs imports this file with KB_VALIDATE_AS_LIB=1 set to
-// reuse the exported pure checks (checkLick, checkPianoRecipe, LEVELS,
-// LICK_TECHNIQUES, MAX_HAND_SPAN) against in-memory fixtures — same logic, no
-// copy. When the env var is absent the script runs the full KB validation as before.
+// reuse the exported pure checks (checkLick, checkPianoRecipe, checkBassPlay,
+// LEVELS, LICK_TECHNIQUES, MAX_HAND_SPAN, MIN_PLAYS_BASS, BASS_APPROACHES,
+// BASS_MAX_OFFSET) against in-memory fixtures — same logic, no copy. When the
+// env var is absent the script runs the full KB validation as before.
 import { readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -16,9 +17,11 @@ const KB = join(ROOT, 'src', 'data', 'kb')
 const MODES = ['major', 'minor', 'dorian', 'phrygian', 'lydian', 'mixolydian']
 const OPEN_PC = [4, 9, 2, 7, 11, 4] // EADGBe low-E first
 const PERFECT_FIFTH = 7
-const BASS_TOKENS = ['R', 'b3', '3', '5', '6', 'b7', '7', '9', 'O', 'chrom>', 'chrom<', '5>', 'x', '-']
 const MIN_PROGRESSIONS = 4
 const MIN_PLAYS = 2
+// Bass floor is 1, not 2 (SCHEMA.md "Bass play"): the band wants one bassline
+// at a time, and rule 4's "idiomatically different" bar invites filler at 2.
+export const MIN_PLAYS_BASS = 1
 const MAX_SPAN = 4
 
 // Optional progression/lick difficulty tags (SCHEMA.md — absent = 'foundation').
@@ -144,15 +147,89 @@ export function checkPianoRecipe(where, chordStep, quality) {
   return out
 }
 
-function checkBassPlay(where, play, prog) {
-  const totalBars = prog.bars.reduce((a, b) => a + b, 0)
-  if (!Array.isArray(play.bars) || play.bars.length !== totalBars)
-    return err(where, `bars length ${play.bars?.length} ≠ progression total ${totalBars}`)
-  play.bars.forEach((bar, i) => {
-    if (!Array.isArray(bar.beats) || !bar.beats.length) return err(`${where} bar ${i}`, 'missing beats')
-    for (const b of bar.beats)
-      if (!BASS_TOKENS.includes(b)) err(`${where} bar ${i}`, `unknown beat token '${b}'`)
+// ── Bass plays (SCHEMA.md "Bass play") ────────────────────────────────────────
+// Degree-based per-station patterns: one chords[] entry per progression step,
+// each a non-empty ORDERED pattern of {deg,…} chord/color tones (resolved
+// through the step's quality — a degree can't misspell a pitch class) and
+// typed {approach,…} notes whose pitch is DERIVED from the next station's
+// root, so the validator can allow the non-chord tone without blessing
+// arbitrary chromatics. Data never encodes strings/frets (key-agnostic,
+// hard rule 1); the renderer places patterns on E–A–D–G, frets 0–15.
+export const BASS_APPROACHES = ['chrom-below', 'chrom-above', 'fifth-of-next']
+// Widest legal offset above the root: an octave + a fifth keeps every pattern
+// placeable on E–A–D–G within frets 0–15 in one position.
+export const BASS_MAX_OFFSET = 19
+const BASS_BEATS_PER_BAR = 4      // patterns are notated in 4 — 12/8 is `feel`
+const BASS_MAX_NOTES_PER_BAR = 8  // straight-8ths density cap (rule 3)
+
+// Pure bass-play validation. Returns an array of where-prefixed error strings
+// (empty = valid). Exported for reuse by scripts/smoke.mjs (lib mode).
+export function checkBassPlay(where, play, prog) {
+  const out = []
+  const e = (msg) => out.push(`${where}: ${msg}`)
+  if (typeof play.feel !== 'string' || !play.feel)
+    e("feel required — the groove in one line (e.g. 'swung 8ths, locked with the kick')")
+  if (play.level !== undefined && !LEVELS.includes(play.level))
+    e(`level must be one of ${LEVELS.join(' | ')}, got '${play.level}'`)
+  if (!Array.isArray(play.chords) || play.chords.length !== prog.degrees.length) {
+    e(`chords length ${play.chords?.length} ≠ progression length ${prog.degrees.length}`)
+    return out
+  }
+  play.chords.forEach((step, ci) => {
+    const cw = `chord[${ci}] (${prog.rn?.[ci] ?? ci})`
+    const quality = prog.qualities[ci]
+    if (!CHORD_TYPES[quality]) return e(`${cw}: unknown quality '${quality}'`)
+    const bars = prog.bars?.[ci] ?? 1
+    const pat = step?.pattern
+    if (!Array.isArray(pat) || !pat.length)
+      return e(`${cw}: pattern must be a non-empty ordered array of notes`)
+    if (pat.length > BASS_MAX_NOTES_PER_BAR * bars)
+      e(`${cw}: ${pat.length} notes > ${BASS_MAX_NOTES_PER_BAR * bars} (8ths density cap over ${bars} bar(s)) — not intermediate-friendly`)
+    let approachSeen = false
+    let rootSeen = false
+    let lastBeat = -Infinity
+    pat.forEach((n, ni) => {
+      const nw = `${cw} pattern[${ni}]`
+      if (!n || typeof n !== 'object') return e(`${nw}: note must be an object ({deg,…} or {approach,…})`)
+      const isDeg = n.deg !== undefined
+      const isApproach = n.approach !== undefined
+      if (isDeg === isApproach) return e(`${nw}: exactly one of deg | approach per note`)
+      if (isApproach) {
+        approachSeen = true
+        if (!BASS_APPROACHES.includes(n.approach))
+          e(`${nw}: unknown approach '${n.approach}' — allowed: ${BASS_APPROACHES.join(', ')}`)
+        if (n.octave !== undefined)
+          e(`${nw}: octave applies to deg notes only (the renderer places approaches beside the next root)`)
+      } else {
+        if (approachSeen)
+          e(`${nw}: deg note after an approach — approach notes must close the pattern (they lead into the next chord)`)
+        if (typeof n.deg !== 'string') {
+          e(`${nw}: deg must be a degree STRING ('1', 'b7', …), got ${JSON.stringify(n.deg)}`)
+        } else {
+          const pc = resolveDegree(n.deg, quality)
+          if (pc === null) e(`${nw}: unresolvable degree '${n.deg}' for ${quality}`)
+          if (n.deg === '1') rootSeen = true
+          if (n.octave !== undefined && n.octave !== 0 && n.octave !== 1)
+            e(`${nw}: octave, when present, must be 0 or 1 — got ${JSON.stringify(n.octave)}`)
+          else if (pc !== null && pc + 12 * (n.octave === 1 ? 1 : 0) > BASS_MAX_OFFSET)
+            e(`${nw}: '${n.deg}' octave ${n.octave} sits ${pc + 12} semitones above the root — max ${BASS_MAX_OFFSET} (an octave + a fifth; keeps the pattern in one position on E–A–D–G)`)
+        }
+      }
+      if (n.technique !== undefined && !LICK_TECHNIQUES.includes(n.technique))
+        e(`${nw}: unknown technique '${n.technique}' — allowed: ${LICK_TECHNIQUES.join(', ')}`)
+      if (n.beat !== undefined) {
+        const maxBeat = BASS_BEATS_PER_BAR * bars
+        if (typeof n.beat !== 'number' || !(n.beat >= 1 && n.beat < maxBeat + 1))
+          e(`${nw}: beat must be a number in [1, ${maxBeat + 1}) for a ${bars}-bar step, got ${JSON.stringify(n.beat)}`)
+        else if (n.beat < lastBeat)
+          e(`${nw}: beat ${n.beat} < previous beat ${lastBeat} — beats must be non-decreasing in pattern order`)
+        else lastBeat = n.beat
+      }
+    })
+    if (!rootSeen)
+      e(`${cw}: pattern never states the root ('1') — a bassline grounds the chord (SCHEMA "Bass play" root rule)`)
   })
+  return out
 }
 
 // Pure lick validation (SCHEMA.md "Licks" section). Returns an array of error
@@ -254,9 +331,10 @@ for (const style of styleDirs) {
     if (inst !== 'bass' && (!pack.improv?.scales?.length || !pack.improv?.targetNotes))
       err(iw, 'improv.scales / improv.targetNotes required')
 
+    const minPlays = inst === 'bass' ? MIN_PLAYS_BASS : MIN_PLAYS
     for (const p of progs)
-      if ((pack.plays?.[p.id]?.length ?? 0) < MIN_PLAYS)
-        err(iw, `progression '${p.id}' has < ${MIN_PLAYS} plays`)
+      if ((pack.plays?.[p.id]?.length ?? 0) < minPlays)
+        err(iw, `progression '${p.id}' has < ${minPlays} play(s)`)
 
     for (const [pid, plays] of Object.entries(pack.plays ?? {})) {
       const prog = progById[pid]
@@ -265,7 +343,7 @@ for (const style of styleDirs) {
         const lw = `${iw} ${pid} play[${pi}] "${play.label ?? '?'}"`
         if (!play.label || !play.level || !play.tips) err(lw, 'label/level/tips required')
         totals.plays++
-        if (inst === 'bass') return checkBassPlay(lw, play, prog)
+        if (inst === 'bass') { for (const m of checkBassPlay(lw, play, prog)) errors.push(m); return }
         if (!Array.isArray(play.chords) || play.chords.length !== prog.degrees.length)
           return err(lw, `chords length ≠ progression length ${prog.degrees.length}`)
         play.chords.forEach((step, ci) => {

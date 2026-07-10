@@ -608,6 +608,168 @@ check('every KB piano pack recipe passes checkPianoRecipe (span ≤ 15 everywher
   console.log(`      (${recipes} live piano recipes checked)`)
 })
 
+// ─── 5b. Bass play schema (C-41) ──────────────────────────────────────────────
+//
+// Same lib-mode pattern as §4/§5: exercise the exported checkBassPlay against
+// in-memory fixtures — a realistic boogie play must pass, and each malformed
+// variant must FAIL with the specific error — proving the bass rules bite
+// before any bass cell (P-41) is authored against them.
+
+console.log('\nBass play schema (validate-kb lib mode):')
+
+const { checkBassPlay, MIN_PLAYS_BASS, BASS_APPROACHES, BASS_MAX_OFFSET } = kbv
+
+check('validate-kb exports checkBassPlay / MIN_PLAYS_BASS(=1) / BASS_APPROACHES / BASS_MAX_OFFSET(=19)', () => {
+  assert(typeof checkBassPlay === 'function', 'checkBassPlay is not a function')
+  assert(MIN_PLAYS_BASS === 1, `MIN_PLAYS_BASS must be 1 (SCHEMA bass coverage floor), got ${MIN_PLAYS_BASS}`)
+  assert(Array.isArray(BASS_APPROACHES) && BASS_APPROACHES.join(',') === 'chrom-below,chrom-above,fifth-of-next',
+    `BASS_APPROACHES must be exactly [chrom-below, chrom-above, fifth-of-next], got ${JSON.stringify(BASS_APPROACHES)}`)
+  assert(BASS_MAX_OFFSET === 19, `BASS_MAX_OFFSET must be 19 (an octave + a fifth), got ${BASS_MAX_OFFSET}`)
+})
+
+// A 2-step I7→IV7 fixture progression; the IV7 gets 2 bars (exercises the
+// per-step beat range). The good play: classic boogie cell + a chromatic walk.
+const bassProg = () => ({
+  id: 'blues-fixture', rn: ['I7', 'IV7'], degrees: [0, 5],
+  qualities: ['dom7', 'dom7'], bars: [1, 2],
+})
+const goodBassPlay = () => ({
+  label: 'Boogie cell',
+  level: 'foundation',
+  feel: 'swung 8ths, locked with the kick',
+  tips: 'The same cell moves to the IV unchanged — degrees, not frets.',
+  chords: [
+    {
+      pattern: [
+        { deg: '1', beat: 1 },
+        { deg: '3', beat: 2 },
+        { deg: '5', beat: 3, technique: 'ghost-note' },
+        { approach: 'chrom-below', beat: 4 },
+      ],
+      note: 'walk up into the IV',
+    },
+    {
+      pattern: [
+        { deg: '1', beat: 1 },
+        { deg: '6', beat: 3 },
+        { deg: 'b7', beat: 5 },
+        { deg: '1', octave: 1, beat: 7 },
+        { approach: 'fifth-of-next', beat: 8 },
+      ],
+    },
+  ],
+})
+
+check('good boogie fixture PASSES checkBassPlay (0 errors)', () => {
+  const errs = checkBassPlay('fixture', goodBassPlay(), bassProg())
+  assert(errs.length === 0, `expected clean pass, got: ${errs.join('; ')}`)
+})
+
+check("unresolvable degree FAILS ('2' is not a bass degree)", () => {
+  const play = goodBassPlay()
+  play.chords[0].pattern[1] = { deg: '2', beat: 2 }
+  const errs = checkBassPlay('fixture', play, bassProg())
+  assert(errs.some((e) => e.includes("unresolvable degree '2'")), `deg '2' was accepted: ${errs.join('; ')}`)
+})
+
+check('numeric deg FAILS (degrees are strings, one convention with piano)', () => {
+  const play = goodBassPlay()
+  play.chords[0].pattern[0] = { deg: 1, beat: 1 }
+  const errs = checkBassPlay('fixture', play, bassProg())
+  assert(errs.some((e) => e.includes('deg must be a degree STRING')), `numeric deg accepted: ${errs.join('; ')}`)
+})
+
+check("octave cap bites (b7 octave 1 = 22 semitones > 19) and bad octave values FAIL", () => {
+  const play = goodBassPlay()
+  play.chords[1].pattern[3] = { deg: 'b7', octave: 1, beat: 7 }
+  const errs = checkBassPlay('fixture', play, bassProg())
+  assert(errs.some((e) => e.includes(`max ${BASS_MAX_OFFSET}`)), `22-semitone offset accepted: ${errs.join('; ')}`)
+  const play2 = goodBassPlay()
+  play2.chords[1].pattern[3] = { deg: '1', octave: 2, beat: 7 }
+  const errs2 = checkBassPlay('fixture', play2, bassProg())
+  assert(errs2.some((e) => e.includes('octave, when present, must be 0 or 1')), `octave 2 accepted: ${errs2.join('; ')}`)
+})
+
+check('empty pattern FAILS', () => {
+  const play = goodBassPlay()
+  play.chords[0].pattern = []
+  const errs = checkBassPlay('fixture', play, bassProg())
+  assert(errs.some((e) => e.includes('pattern must be a non-empty ordered array')), `empty pattern accepted: ${errs.join('; ')}`)
+})
+
+check("rootless pattern FAILS (every pattern must state '1')", () => {
+  const play = goodBassPlay()
+  play.chords[0].pattern = [{ deg: '3', beat: 1 }, { deg: '5', beat: 2 }]
+  const errs = checkBassPlay('fixture', play, bassProg())
+  assert(errs.some((e) => e.includes("never states the root ('1')")), `rootless pattern accepted: ${errs.join('; ')}`)
+})
+
+check('approach notes must CLOSE the pattern (deg after approach fails)', () => {
+  const play = goodBassPlay()
+  play.chords[0].pattern = [{ deg: '1', beat: 1 }, { approach: 'chrom-below', beat: 2 }, { deg: '5', beat: 3 }]
+  const errs = checkBassPlay('fixture', play, bassProg())
+  assert(errs.some((e) => e.includes('deg note after an approach')), `mid-pattern approach accepted: ${errs.join('; ')}`)
+})
+
+check("unknown approach type FAILS ('tritone-sub' is not in the typed set)", () => {
+  const play = goodBassPlay()
+  play.chords[0].pattern[3] = { approach: 'tritone-sub', beat: 4 }
+  const errs = checkBassPlay('fixture', play, bassProg())
+  assert(errs.some((e) => e.includes("unknown approach 'tritone-sub'")), `unknown approach accepted: ${errs.join('; ')}`)
+})
+
+check('beat range + ordering bite (beat 9 on a 2-bar step; decreasing beats)', () => {
+  const play = goodBassPlay()
+  play.chords[1].pattern[4] = { approach: 'fifth-of-next', beat: 9 } // 2 bars → beat < 9
+  const errs = checkBassPlay('fixture', play, bassProg())
+  assert(errs.some((e) => e.includes('beat must be a number in [1, 9)')), `beat 9 on a 2-bar step accepted: ${errs.join('; ')}`)
+  const play2 = goodBassPlay()
+  play2.chords[0].pattern[2] = { deg: '5', beat: 1.5 } // after beat 2 — decreasing
+  const errs2 = checkBassPlay('fixture', play2, bassProg())
+  assert(errs2.some((e) => e.includes('beats must be non-decreasing')), `decreasing beats accepted: ${errs2.join('; ')}`)
+})
+
+check('chords length ≠ progression length FAILS; missing feel FAILS; bad technique FAILS', () => {
+  const short = goodBassPlay(); short.chords = short.chords.slice(0, 1)
+  assert(checkBassPlay('fixture', short, bassProg()).some((e) => e.includes('chords length 1 ≠ progression length 2')),
+    'short chords array accepted')
+  const noFeel = goodBassPlay(); delete noFeel.feel
+  assert(checkBassPlay('fixture', noFeel, bassProg()).some((e) => e.includes('feel required')),
+    'missing feel accepted')
+  const badTech = goodBassPlay(); badTech.chords[0].pattern[2].technique = 'slap-pop'
+  assert(checkBassPlay('fixture', badTech, bassProg()).some((e) => e.includes("unknown technique 'slap-pop'")),
+    'off-vocabulary technique accepted')
+})
+
+check('density cap bites (> 8 notes per bar is not intermediate)', () => {
+  const play = goodBassPlay()
+  play.chords[0].pattern = Array.from({ length: 9 }, () => ({ deg: '1' }))
+  const errs = checkBassPlay('fixture', play, bassProg())
+  assert(errs.some((e) => e.includes('8ths density cap')), `9 notes in one bar accepted: ${errs.join('; ')}`)
+})
+
+// Live-KB guard (future-proofs P-41): every bass pack play in the registry
+// passes checkBassPlay. Zero bass cells today — the loop is a no-op until the
+// first bass.js registers, then it gates it exactly like the validator does.
+check('every KB bass pack play passes checkBassPlay', () => {
+  let bassPlays = 0
+  for (const styleName of styleNames) {
+    const pack = kb[styleName]?.instruments?.bass
+    if (!pack) continue
+    const progById = Object.fromEntries((kb[styleName].progressions ?? []).map((p) => [p.id, p]))
+    for (const [pid, plays] of Object.entries(pack.plays ?? {})) {
+      const prog = progById[pid]
+      assert(prog, `${styleName}/bass plays key '${pid}' is not a progression of this style`)
+      plays.forEach((play, pi) => {
+        bassPlays++
+        const errs = checkBassPlay(`${styleName}/bass ${pid} play[${pi}] "${play.label ?? '?'}"`, play, prog)
+        assert(errs.length === 0, errs.join('; '))
+      })
+    }
+  }
+  console.log(`      (${bassPlays} live bass plays checked)`)
+})
+
 // ─── 6. Loop-detection truth fixtures (C-30) ──────────────────────────────────
 //
 // Run every scripts/loop-fixtures.mjs case against the REAL

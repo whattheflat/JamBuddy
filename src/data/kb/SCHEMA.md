@@ -68,7 +68,7 @@ Common envelope:
 export default {
   styleIntro: '2-3 sentences on this instrument's role in the style.',
   comping: [{ label, rhythm, description }],   // ≥1 named rhythm
-  plays: { '<progression-id>': [ <play>, <play> ] },  // ≥2 plays per progression
+  plays: { '<progression-id>': [ <play>, <play> ] },  // ≥2 plays per progression (bass: ≥1 — see Bass play)
   improv: {                                     // guitar/piano; optional for bass
     scales: [{ over: 'ii7', scale: 'dorian', why }],
     targetNotes: '…',
@@ -108,6 +108,14 @@ export default {
 
 Voicings are degree recipes resolved through the chord quality. Degrees: `'1' '3' '5' '7'` resolve per quality (e.g. `'3'` → ♭3 for min7); altered/extended degrees are explicit: `'b9' '9' '#9' '11' '#11' 'b13' '13' '6'`.
 
+> **Resolver quirk (both hand-synced `resolveDegree` copies —
+> `scripts/validate-kb.mjs` and `src/components/JamGuide.jsx`):** on
+> `maj6`/`min6` the degree `'7'` resolves to **9 semitones, i.e. the 6th**
+> (those qualities have no 7th in their interval set, and the resolver takes
+> the top stack tone as the "7 slot"). It never misspells the chord, but when
+> you mean the 6th, write `'6'` explicitly — don't lean on `'7'`. This applies
+> equally to bass patterns below, which share the same resolver.
+
 ```js
 {
   label: 'Rootless A/B alternation',
@@ -123,16 +131,70 @@ Voicings are degree recipes resolved through the chord quality. Degrees: `'1' '3
 
 ### Bass play
 
+A bass play is per-station patterns: `chords` has **one entry per progression
+step** (like guitar/piano plays), each carrying the ordered notes the bassist
+plays over that chord.
+
+Patterns are **degree-based** — the piano-recipe language — not string/fret
+tab. Why: hard rule 1. A bass play renders over every station of a *detected*
+loop in the *detected* key, so the data must transpose automatically; and a
+degree either resolves through the chord quality or it doesn't — you cannot
+misspell a pitch class, only mislabel your intent. Fret tab was considered and
+rejected: absolute frets are key-specific (licks are the one documented
+exception, and they say so), and a movable-fret variant breaks at the nut —
+exactly where bass lives, on open strings. The open-string/position idiom
+belongs in authoring prose: the optional `position` hint.
+
+Rendering convention (for the per-station pattern card): standard 4-string
+tuning **E–A–D–G**, strings numbered **1 = G (highest) … 4 = E (lowest)** —
+the same "1 = highest string" convention as lick tab and `rootStr`, so no
+third counting scheme exists in this codebase. The renderer places each
+pattern in the lowest playable position within frets 0–15; the data itself
+never encodes strings or frets.
+
 ```js
 {
-  label: 'Walking, chromatic approach',
-  level: 'intermediate',
-  bars: [{ beats: ['R', '3', '5', 'chrom>'] }],  // per bar of the progression
-  // beat tokens: R 3 5 7 (chord degrees) · 'chrom>' / 'chrom<' (chromatic into next root
-  // from below/above) · '5>' (dominant approach) · 'x' (ghost) · '-' (hold)
-  tips: '…',
+  label: 'Boogie cell',
+  level: 'foundation',
+  feel: 'swung 8ths, locked with the kick',   // REQUIRED — the groove in one line
+  chords: [        // one per progression step
+    {
+      pattern: [   // the ORDERED notes (played first → last)
+        { deg: '1', beat: 1 },           // chord/color tone, resolved through the quality
+        { deg: '3', beat: 2 },
+        { deg: '5', beat: 3, technique: 'ghost-note' },  // technique optional (lick vocabulary)
+        { approach: 'chrom-below', beat: 4 },  // leads into the NEXT station's root
+      ],
+      note: 'walk up into the IV',       // optional, as in guitar/piano plays
+    },
+    // …
+  ],
+  position: 'first five frets; open E and A when the key allows',  // OPTIONAL prose hint
+  tips: 'Transferable idea.',
 }
 ```
+
+Field rules (all enforced by `node scripts/validate-kb.mjs` when a `bass.js`
+pack exists — a style without one is complete and valid):
+
+| Field | Rule |
+|---|---|
+| `feel` | required non-empty string — bass is a rhythm role; the pattern alone doesn't say swung vs straight |
+| `chords` | array, exactly one entry per progression step |
+| `pattern` | non-empty ordered array; ≤ 8 notes per bar of its step (straight-8ths density cap — rule 3) |
+| note shape | exactly one of `deg` \| `approach` per note |
+| `deg` | a degree **string** from the piano-recipe language above, resolved through the step's quality (`'1' '3' '5' '7'` quality-resolved; `'b3' '6' 'b7' 'b9' '9' '#9' '11' '#11' 'b5' 'b13' '13'` explicit). The maj6/min6 `'7'` quirk above applies — write `'6'` |
+| root rule | every pattern states `'1'` at least once — a bassline grounds the chord (a deliberately rootless play needs a schema change, not silence) |
+| `octave` | optional on `deg` notes, `0` (default) or `1`; the resolved offset `deg + 12·octave` must stay **≤ 19 semitones** (an octave + a fifth) so every pattern sits on E–A–D–G within frets 0–15 in one position |
+| `approach` | `'chrom-below'` (next root − 1 semitone) · `'chrom-above'` (next root + 1) · `'fifth-of-next'` (next root + 7). The pitch is **derived from the next station's root** (last step wraps to the first), never authored — that's why the validator can allow a non-chord tone here while untyped chromatics stay illegal. Approach notes must be the **final note(s)** of the pattern — they lead into the next chord |
+| `beat` | optional number, `1 ≤ beat < 4·bars + 1` for that step (patterns are notated in 4 — a 12/8 shuffle is `feel`, not extra beats); non-decreasing in pattern order (equal beats = a dyad) |
+| `technique` | optional per note, from the fixed lick technique vocabulary (see Licks) |
+
+**Coverage: every progression of the style needs ≥ 1 bass play** — deliberately
+1, not the guitar/piano 2. The band wants ONE bassline at a time, and rule 4's
+"idiomatically different" bar is hard to clear twice per progression without
+filler. A second play is welcome where a genuinely different lane exists
+(two-feel vs walking, say) — the validator sets a floor, not a ceiling.
 
 ## Licks (optional, guitar first)
 
@@ -212,4 +274,5 @@ cards render and the validator checks.
 - [ ] Every tip teaches a transferable idea (voice leading, register, space), not just "play this"
 - [ ] Songs/licks have sources; nothing invented
 - [ ] Lick techniques use only the fixed vocabulary; every lick is playable as written (strings 1–6, frets 0–15, in order)
+- [ ] Bass patterns state the root, keep approaches typed and terminal, and stay within an octave + a fifth of the root
 - [ ] `node scripts/validate-kb.mjs` green; `npm run build` green
