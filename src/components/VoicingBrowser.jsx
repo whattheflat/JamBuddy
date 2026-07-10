@@ -35,13 +35,19 @@
 //   quality — CHORD_TYPES key; unknown values fall back to 'maj'
 //             (matching voicings.js / piano.js behaviour)
 //   show    — 'guitar' | 'piano' | 'both' (default 'both', task D-23): which
-//             instrument section(s) to render. Any other value falls back to
-//             both, so every pre-existing mount renders identically with no prop.
-//   dense   — boolean (default false, task L-33 — additive per D-31 §5): trims
-//             section padding and suppresses the per-mount mic-feedback
-//             microcopy, for mounts inside the GlanceRail accordion where the
-//             rail shows that microcopy ONCE for the whole rail (D-31 §2.5).
-//             Every pre-existing mount renders identically with no prop.
+//             instrument section(s) to render. 'bass' (task D-41, D-40 §3)
+//             renders NEITHER gallery — guitar shapes are not bass patterns and
+//             pianoVoicing is piano, so showing either under the global BASS
+//             selector would lie; an honest one-liner renders instead. Any
+//             OTHER value still falls back to both, so every pre-existing
+//             mount renders identically with no prop.
+//   dense   — boolean (default false, task L-33 — additive per D-31 §5; D-41
+//             restyled it for the all-expanded GlanceRail rows): drops the
+//             section chrome (border/panel background/heading — the row header
+//             already names the chord) and suppresses the per-mount
+//             mic-feedback microcopy (the rail shows it ONCE for the whole
+//             rail, D-31 §2.5). Every pre-existing mount renders identically
+//             with no prop.
 
 import { useEffect, useMemo, useRef } from 'react'
 import ChordDiagram from './ChordDiagram'
@@ -145,13 +151,15 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
   const name = chordName(pc, quality)
   const chordKey = `${pc}:${quality}`
 
-  // Section gating (D-23). 'guitar' hides the piano section, 'piano' hides the
-  // guitar section, anything else (incl. the 'both' default) shows both — so at
-  // least one section ALWAYS renders, and the mic-feedback microcopy below
-  // stays with it. Hooks stay unconditional; the shared stop-handle discipline
+  // Section gating (D-23; 'bass' added by D-41 per D-40 §3). 'guitar' hides
+  // the piano section, 'piano' hides the guitar section, 'bass' hides BOTH
+  // (neither gallery is honest for a bassist — the one-liner below renders
+  // instead, so the dock's VoicingsSection under the global BASS selector
+  // stops showing guitar+piano). Anything else (incl. the 'both' default)
+  // shows both. Hooks stay unconditional; the shared stop-handle discipline
   // (stop on chord change / unmount) is untouched by hiding a section.
-  const showGuitar = show !== 'piano'
-  const showPiano = show !== 'guitar'
+  const showGuitar = show !== 'piano' && show !== 'bass'
+  const showPiano = show !== 'guitar' && show !== 'bass'
 
   const guitarShapes = useMemo(() => matchingShapes(quality, pc), [quality, pc])
   const pianoOptions = useMemo(
@@ -201,11 +209,15 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
       {showGuitar && (
       <section
         aria-label={`Guitar voicings for ${name}`}
-        className={`min-w-[240px] flex-1 basis-[300px] rounded-lg border border-border bg-panel ${dense ? 'p-2' : 'p-3'}`}
+        className={`min-w-[240px] flex-1 basis-[300px] ${dense ? '' : 'rounded-lg border border-border bg-panel p-3'}`}
       >
-        <div className="mb-2">
-          <SectionHeading>Guitar · {name}</SectionHeading>
-        </div>
+        {/* dense (a GlanceRail row): the row header already names the chord and
+            the global selector names the instrument — no repeated heading. */}
+        {!dense && (
+          <div className="mb-2">
+            <SectionHeading>Guitar · {name}</SectionHeading>
+          </div>
+        )}
 
         {guitarShapes.length === 0 ? (
           // Graceful: nothing placeable for this root/quality — say so, no crash.
@@ -237,11 +249,13 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
       {showPiano && (
       <section
         aria-label={`Piano voicings for ${name}`}
-        className={`min-w-[240px] flex-1 basis-[300px] rounded-lg border border-border bg-panel ${dense ? 'p-2' : 'p-3'}`}
+        className={`min-w-[240px] flex-1 basis-[300px] ${dense ? '' : 'rounded-lg border border-border bg-panel p-3'}`}
       >
-        <div className="mb-2">
-          <SectionHeading>Piano · {name}</SectionHeading>
-        </div>
+        {!dense && (
+          <div className="mb-2">
+            <SectionHeading>Piano · {name}</SectionHeading>
+          </div>
+        )}
 
         <div
           role="group"
@@ -265,11 +279,20 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
       </section>
       )}
 
+      {/* ── show='bass' (D-41, D-40 §3): no gallery would be honest — say so
+             in one line instead of rendering guitar+piano under BASS. ── */}
+      {!showGuitar && !showPiano && (
+        <p className="text-xs text-gray-400">
+          No bass voicings for {name} yet — authored bass patterns are on the way
+          (blues first). Guitar and piano voicings live under those instruments.
+        </p>
+      )}
+
       {/* Mic-feedback caveat, per the L-20 header + D-20 §3 (microcopy tier).
-          At least one section always renders (see the gating above), so this
-          stays — except under `dense`, where the GlanceRail shows the SAME
-          microcopy once for the whole rail (D-31 §2.5) instead of per gallery. */}
-      {!dense && (
+          Skipped under `dense`, where the GlanceRail shows the SAME microcopy
+          once for the whole rail (D-31 §2.5) instead of per gallery — and under
+          'bass', where there is no ▶ to caveat. */}
+      {!dense && (showGuitar || showPiano) && (
         <p className="w-full basis-full text-[11px] text-gray-500">
           Previews play through your speakers — while the mic is live, detection may
           hear them.

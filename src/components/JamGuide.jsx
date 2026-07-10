@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import kb from '../data/kb/index.js'
 import { buildLoopIndex, matchLoopToProgression, findLoopPosition, chordRootPC } from '../lib/match'
 import { NOTES, CHORD_TYPES } from '../lib/theory'
-import GlanceRail from './GlanceRail'
+import GlanceRail, { AimDots, SoloLabel } from './GlanceRail'
 import VoicingBrowser from './VoicingBrowser'
 import LickCard, { TechniqueLegend } from './LickCard'
 import { ExploreSection, VoicingsSection, LevelChips } from './ExplorePanel'
@@ -295,34 +295,35 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
     return stations
   }, [match.matched, match.progression, match.style, instrument, keyRoot])
 
-  // ── Pinned station (L-33 — replaces tap-to-enlarge `selectedStation`, same
-  // semantics): pinning halts the rail's auto-follow and holds that station's
-  // gallery open. null = follow the jam. ──
-  const [pinnedStation, setPinnedStation] = useState(null)
-  // Reset the pin whenever the loop or style changes underneath us.
-  useEffect(() => { setPinnedStation(null) }, [match.id, match.style, instrument])
+  // ── Focused station (D-41 — the L-33 pin, simplified per D-40 §4: with every
+  // row always expanded there is nothing to hold open, so the gesture collapses
+  // to a focus TOGGLE on the row header). Same JamGuide-owned state, same reset
+  // effect, same onFocusChord emission as pinnedStation before it. ──
+  const [focusedStation, setFocusedStation] = useState(null)
+  // Reset the focus whenever the loop or style changes underneath us.
+  useEffect(() => { setFocusedStation(null) }, [match.id, match.style, instrument])
 
   // ── Cross-link to the main Fretboard (D-03) ─────────────────────────────────
-  // When a station is PINNED, report its {rootPc, quality} upward so the
-  // Fretboard can light that chord's guide tones; clear (null) on unpin. The
-  // reset effect above sets pinnedStation → null on loop/style/instrument
+  // When a station is FOCUSED, report its {rootPc, quality} upward so the
+  // Fretboard can light that chord's guide tones; clear (null) on unfocus. The
+  // reset effect above sets focusedStation → null on loop/style/instrument
   // change, which flows through here and clears the highlight too. Guarded so
   // the component still works standalone (onFocusChord optional).
-  // Auto-follow (the unpinned accordion) NEVER emits focus-chord — repainting
+  // The playhead (auto-follow highlight) NEVER emits focus-chord — repainting
   // the player's fretboard uninvited every chord change would fight their own
-  // key view (D-31 §2.6). Only the pin gesture reaches this effect.
+  // key view (D-31 §2.6). Only the focus gesture reaches this effect.
   useEffect(() => {
     if (!onFocusChord) return
-    const st = pinnedStation != null ? stationVoicings[pinnedStation] : null
+    const st = focusedStation != null ? stationVoicings[focusedStation] : null
     onFocusChord(st ? { rootPc: st.rootPc, quality: st.quality } : null)
-  }, [pinnedStation, stationVoicings, onFocusChord])
+  }, [focusedStation, stationVoicings, onFocusChord])
 
   // Clear the Fretboard highlight when JamGuide unmounts.
   useEffect(() => () => { onFocusChord?.(null) }, [onFocusChord])
 
-  // Licks-strip context = the PLAYHEAD station (canonicalPos −1 → station 0,
-  // the same rule as the rail's expansion). The pin freezes the rail, not the
-  // strip — the strip keeps re-sorting with the jam (D-31 §2.4).
+  // Licks-strip context = the PLAYHEAD station (canonicalPos −1 → station 0).
+  // The focus toggle aims the fretboard, not the strip — the strip keeps
+  // re-sorting with the jam (D-31 §2.4).
   const contextStation = stationVoicings[canonicalPos >= 0 ? canonicalPos : 0] ?? null
 
   return (
@@ -340,17 +341,19 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
              both gallery generators are wrong for bass — computed roots/fifths/
              approaches instead. The licks strip hides too (guitar tab licks
              are noise to a bassist mid-jam). */
-          <BassGuideRows stations={stationVoicings} activeIndex={canonicalPos} />
+          <BassGuideRows stations={stationVoicings} activeIndex={canonicalPos} keyMode={keyInfo?.mode} />
         ) : (
         <div className="flex flex-col gap-3">
-          {/* The voicing rail (the playhead accordion until D-41 expands all rows). */}
+          {/* The voicing rail — ALL stations expanded as vertical rows; the
+              playhead only highlights (D-41, D-40 §4). */}
           <GlanceRail
             stations={stationVoicings}
             activeIndex={canonicalPos}
-            pinnedIndex={pinnedStation}
-            onPin={setPinnedStation}
+            focusedIndex={focusedStation}
+            onFocus={setFocusedStation}
             instrument={instrument}
             keyRoot={keyRoot}
+            keyMode={keyInfo?.mode}
           />
           <LicksStrip
             styleId={activeStyle}
@@ -370,6 +373,7 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
           <BassGuideRows
             stations={[{ rootPc: liveChord.rootPc, quality: liveChord.type, label: currentChord, rn: '' }]}
             activeIndex={0}
+            keyMode={keyInfo?.mode}
             live
           />
         ) : (
@@ -420,14 +424,19 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
 // minimum, PURE ARITHMETIC on data the band already has (no theory.js change):
 // the ROOT, the FIFTH (root + 7 semitones), and the chromatic APPROACH into the
 // NEXT station's root (one semitone below it — "approach: G♯ → A"). The last
-// station approaches the first (the loop wraps). Solo-scale/guide-tone headers
-// land with D-41's row anatomy; L-42 replaces these lines with authored
-// BassPatternCards per station when the matched style ships a bass cell.
+// station approaches the first (the loop wraps). Each row carries the same
+// header anatomy as the GlanceRail rows (D-41, D-40 §3/§4 — chord + rn +
+// solo-scale label + aim dots, via GlanceRail's exported atoms): guide tones
+// ARE the bassist's target notes; none of that education is instrument-
+// specific. L-42 replaces the computed line with an authored BassPatternCard
+// per station when the matched style ships a bass cell — the row structure,
+// highlight, and header need zero changes for it (the D-40 §3 contract).
 //
 //   stations    — [{ rootPc, quality, label, rn }] canonical KB order
 //   activeIndex — playhead station (canonicalPos); -1 = none marked "now"
+//   keyMode     — key mode name (soloScale's minor-key dominant nudge)
 //   live        — heard-live single chord: no next chord, so no approach line
-function BassGuideRows({ stations = [], activeIndex = -1, live = false }) {
+function BassGuideRows({ stations = [], activeIndex = -1, keyMode, live = false }) {
   const n = stations.length
   if (n === 0) return null
   return (
@@ -450,23 +459,31 @@ function BassGuideRows({ stations = [], activeIndex = -1, live = false }) {
               role="listitem"
               aria-current={isNow ? 'true' : undefined}
               className={
-                'flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border px-3 py-2 ' +
-                (isNow ? 'border-accent bg-accent/10' : 'border-border bg-surface')
+                'rounded-lg border px-3 py-2 ' +
+                (isNow ? 'border-accent bg-accent/10 ring-2 ring-accent' : 'border-border bg-surface')
               }
               style={{ opacity: isNow ? 1 : 0.85 }}
             >
-              <span className="text-sm font-semibold leading-none text-gray-100">{st.label}</span>
-              {st.rn && (
-                <span className="text-[9px] font-medium uppercase tracking-wide text-gray-400">
-                  {st.rn}
+              {/* Header line — visual parity with the GlanceRail rows. */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="flex min-h-[20px] items-center gap-2">
+                  <span className="text-sm font-bold leading-none text-gray-100">{st.label}</span>
+                  {st.rn && (
+                    <span className="text-[9px] font-medium uppercase tracking-wide text-gray-400">
+                      {st.rn}
+                    </span>
+                  )}
                 </span>
-              )}
-              {isNow && (
-                <span className="text-[9px] font-semibold uppercase tracking-widest text-accent">
-                  now
-                </span>
-              )}
-              <span className="text-xs text-gray-300">
+                {isNow && (
+                  <span className="text-[9px] font-semibold uppercase tracking-widest text-accent">
+                    now
+                  </span>
+                )}
+                <SoloLabel rootPc={st.rootPc} quality={st.quality} keyMode={keyMode} />
+                <AimDots rootPc={st.rootPc} quality={st.quality} />
+              </div>
+              {/* The computed line — the gallery slot until L-42's pattern card. */}
+              <p className="mt-1.5 text-xs text-gray-300">
                 root <span className="font-semibold text-gray-100">{NOTES[st.rootPc]}</span>
                 <span className="text-gray-600"> · </span>
                 fifth <span className="font-semibold text-gray-100">{NOTES[fifthPc]}</span>
@@ -479,7 +496,7 @@ function BassGuideRows({ stations = [], activeIndex = -1, live = false }) {
                     </span>
                   </>
                 )}
-              </span>
+              </p>
             </div>
           )
         })}
