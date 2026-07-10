@@ -520,16 +520,58 @@ export function toRomanNumeral(chordName, keyRoot, keyMode) {
   return isMinorQuality ? rn.toLowerCase() : rn
 }
 
-// ─── Repeating progression detection ─────────────────────────────────────────
+// ─── Repeating progression detection ──────────────────────────────────────────
 
-// Returns true if arr is made of a shorter repeating unit (e.g. [A,B,A,B] → true)
-function isPeriodicPattern(arr) {
-  for (let p = 1; p <= Math.floor(arr.length / 2); p++) {
-    if (arr.length % p !== 0) continue
-    const unit = arr.slice(0, p)
-    if (arr.every((v, i) => v === unit[i % p])) return true
+// True if arr has a "weak period" p < arr.length — i.e. arr[i] === arr[i-p] for
+// every i ≥ p, meaning arr is a prefix of some p-periodic infinite sequence.
+// This rejects not only exact repetitions ([A,B,A,B], p=2) but also self-overlap
+// fragments/rotations of a shorter loop ([A,B,A], p=2; [C,G,Am,F,C], p=4) that
+// would otherwise mint ghost candidates out of a short vamp. A genuine loop is
+// never weak-periodic: a loop whose tail restates its head would produce an
+// adjacent duplicate at the cycle seam, which the window collapse removes.
+function hasShorterPeriod(arr) {
+  for (let p = 1; p < arr.length; p++) {
+    let periodic = true
+    for (let i = p; i < arr.length; i++) {
+      if (arr[i] !== arr[i - p]) { periodic = false; break }
+    }
+    if (periodic) return true
   }
   return false
+}
+
+// Match one occurrence of `cand` in `win` anchored at `start` (the first chord
+// must match exactly), tolerating at most ONE edit per cycle: a substitution
+// (one chord misdetected) or an insertion (one foreign chord slipped between two
+// loop chords). The remainder after the edit must match exactly. Returns
+// { end, matched, editPos } — `matched` = window indices that matched a loop
+// chord, `editPos` = window index of the edit (-1 if the occurrence is exact) —
+// or null if no match.
+function matchLoopOccurrence(win, start, cand) {
+  if (win[start] !== cand[0]) return null
+  const matched = [start]
+  let i = start + 1
+  for (let j = 1; j < cand.length; j++) {
+    if (i >= win.length) return null
+    if (win[i] === cand[j]) { matched.push(i); i++; continue }
+
+    // First mismatch — the single allowed edit. Fork the two readings; each
+    // requires the rest of the candidate to match exactly from where it lands.
+    const exactFrom = (wi, cj) => {
+      const tail = []
+      for (; cj < cand.length; cj++, wi++) {
+        if (wi >= win.length || win[wi] !== cand[cj]) return null
+        tail.push(wi)
+      }
+      return { end: wi, tail }
+    }
+    const ins = exactFrom(i + 1, j)     // win[i] is a foreign inserted chord
+    const sub = exactFrom(i + 1, j + 1) // win[i] is cand[j] misdetected
+    const hit = ins ?? sub              // insertion keeps one more matched chord
+    if (!hit) return null
+    return { end: hit.end, matched: [...matched, ...hit.tail], editPos: i }
+  }
+  return { end: i, matched, editPos: -1 }
 }
 
 // Returns the lexicographically smallest rotation so the same loop always
@@ -544,42 +586,73 @@ function canonicalize(pattern) {
 }
 
 /**
- * detectRepeatingProgression(history) → chord[] or null
+ * detectRepeatingProgression(history) → chord[] or null   (task L-30)
  *
- * Tests every unique subsequence of every length (not just the tail) so the
- * result is stable regardless of where in the loop the musician currently is.
- * Returns the canonical (rotation-normalised) form of the best pattern found.
+ * Finds the loop the musician is playing NOW in the recent chord history.
+ * Candidates are contiguous slices (lengths 2–8) of the last-32 window with
+ * consecutive duplicate commits collapsed; candidates that are self-overlaps
+ * of a shorter period are rejected (see hasShorterPeriod). Each candidate is
+ * scored by recency-weighted COVERAGE: non-overlapping occurrences are counted
+ * with at most one substitution or insertion per cycle, every matched chord
+ * adds its recency weight, every edit subtracts the weight at the edit slot.
+ * Linear coverage (not reps × len²) means a ghost pattern straddling noise can
+ * never outscore the true loop, and exponential recency decay means the current
+ * section outscores a longer stale one. Requires ≥2 EXACT occurrences: an
+ * edit-tolerant occurrence corroborates a loop but cannot establish it — a
+ * loop means the sequence came back exactly, and a ghost slice that absorbs a
+ * noise chord into itself occurs exactly only once by construction. Returns
+ * the canonical (rotation-normalised) best pattern.
  */
 export function detectRepeatingProgression(history) {
   if (!history || history.length < 6) return null
 
-  const win = history.slice(-32)
-  let best = null, bestScore = 0
+  // Collapse consecutive duplicate commits — a chord re-committed back-to-back
+  // is the same loop slot, not two. Non-adjacent repeats (e.g. Em … Em inside a
+  // 7-chord form) are meaningful and untouched.
+  const raw = history.slice(-32)
+  const win = raw.filter((c, i) => i === 0 || c !== raw[i - 1])
+  const n = win.length
+  if (n < 4) return null // shortest loop (2 chords) × 2 reps
 
-  for (let len = 2; len <= 6; len++) {
-    if (len * 2 > win.length) break
+  // Recency weight per window slot: newest chord weighs 1, each step back
+  // decays by 0.9 (half-life ≈ 6.6 chords).
+  const RECENCY = 0.9
+  const weight = Array.from({ length: n }, (_, i) => RECENCY ** (n - 1 - i))
 
+  let best = null
+  let bestScore = 0
+
+  for (let len = 2; len <= 8; len++) {
+    if (len * 2 > n) break
     const seen = new Set()
 
-    for (let start = 0; start <= win.length - len; start++) {
+    for (let start = 0; start <= n - len; start++) {
       const candidate = win.slice(start, start + len)
       const key = candidate.join('\0')
       if (seen.has(key)) continue
       seen.add(key)
 
-      // A pattern that is itself a repetition of something shorter will be
-      // found at that shorter length — skip it here to avoid inflating scores.
-      if (len >= 4 && isPeriodicPattern(candidate)) continue
+      if (hasShorterPeriod(candidate)) continue
 
-      let reps = 0, i = 0
-      while (i <= win.length - len) {
-        if (candidate.every((c, j) => c === win[i + j])) { reps++; i += len }
-        else i++
+      let exactOccurrences = 0
+      let score = 0
+      let i = 0
+      while (i < n) {
+        const occ = matchLoopOccurrence(win, i, candidate)
+        // A 2-chord candidate may not take a substitution (1 matched chord is
+        // no evidence); insertions keep matched === len and stay allowed.
+        if (occ && occ.matched.length >= 2) {
+          if (occ.editPos < 0) exactOccurrences++
+          for (const p of occ.matched) score += weight[p]
+          if (occ.editPos >= 0) score -= weight[occ.editPos]
+          i = occ.end
+        } else {
+          i++
+        }
       }
 
-      if (reps < 2) continue
+      if (exactOccurrences < 2) continue // implies occurrences ≥ 2
 
-      const score = reps * len * len  // square length — prevents sub-patterns from beating full loop
       if (score > bestScore) {
         bestScore = score
         best = candidate
