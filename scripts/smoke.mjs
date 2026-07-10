@@ -844,7 +844,7 @@ if (expectedFails) {
 //     pitches, no error. Guard: a LITERAL 16-degree × 14-quality truth table
 //     (pinned values, NOT derived from CHORD_TYPES at runtime — deriving would
 //     let the expectation co-move with the very code under test) asserted
-//     against the validator's implementation for every pair.
+//     against BOTH implementations for every pair.
 //       · The validator's resolveDegree is unexported; it is probed BEHAVIOURALLY
 //         through the exported checkPianoRecipe: recipe LH ['1','1','1', deg]
 //         stacks 0 → 12 → 24 → 24 + offset (a repeated pc climbs an octave —
@@ -852,14 +852,14 @@ if (expectedFails) {
 //         (span 25–36 > MAX_HAND_SPAN 15) and REPORTS the span, from which the
 //         offset is recovered exactly: offset = span − 24 (36 → 0). An
 //         unresolvable degree instead yields the 'unresolvable degree' error.
-//       · JamGuide.jsx's copy is NOT directly comparable today — the function is
-//         module-scoped, unexported (checked 2026-07-10), and no probe reaches
-//         it through the default export. Follow-up filed for the board: an
-//         export-only line on JamGuide's resolveDegree (Luthier — L-40 already
-//         locks JamGuide.jsx) lets this section sweep both copies directly.
-//         Until then this table pins the CONTRACT side; any validator drift
-//         goes red here, and the JamGuide copy is one `export` away from the
-//         same sweep.
+//       · JamGuide.jsx's copy IS directly comparable (since 2026-07-10):
+//         L-40's ride-along exported `resolveDegree` (the C-40 follow-up), so
+//         this section imports the real component module under the jsx load
+//         hook below and sweeps the copy against the same pinned table, cell
+//         for cell. A '.jsx'-retry resolve hook (registered next to the load
+//         hook) lets JamGuide's extensionless component imports
+//         ('./GlanceRail', './BassPatternCard'…) resolve under raw Node ESM —
+//         the top-of-file hook only retries '.js'.
 //
 // (b) Technique vocabulary — validate-kb.mjs LICK_TECHNIQUES (the schema gate)
 //     vs LickCard.jsx TECHNIQUE_VOCAB (the renderer's glyph vocabulary). A word
@@ -884,6 +884,27 @@ register(
           return { format: 'module', source: code, shortCircuit: true }
         }
         return next(url, context)
+      }
+    `),
+  import.meta.url,
+)
+
+// -- '.jsx' resolve retry: component files import siblings extensionless -------
+// (e.g. JamGuide.jsx does `import GlanceRail from './GlanceRail'`; the top-of-
+// file hook retries '.js' only). Registered last so it runs FIRST and catches
+// the whole chain's failure, then retries with '.jsx' appended.
+register(
+  'data:text/javascript,' +
+    encodeURIComponent(`
+      export async function resolve(specifier, context, next) {
+        try {
+          return await next(specifier, context)
+        } catch (e) {
+          if (/^\\.{1,2}\\//.test(specifier) && !/\\.([mc]?js|jsx)$/.test(specifier)) {
+            try { return await next(specifier + '.jsx', context) } catch { throw e }
+          }
+          throw e
+        }
       }
     `),
   import.meta.url,
@@ -938,6 +959,15 @@ check('truth table covers 16 degrees × all 14 CHORD_TYPES qualities', () => {
     if (Array.isArray(row)) assert(row.length === 14, `row '${deg}' has ${row.length} entries, expected 14`)
 })
 
+// JamGuide's hand-synced copy, imported directly (exported by the L-40
+// ride-along; transpiled by the jsx load hook above).
+const jamGuideMod = await load('src/components/JamGuide.jsx')
+
+check('JamGuide.jsx exports resolveDegree (L-40 ride-along) so the drift guard can sweep it directly', () => {
+  assert(typeof jamGuideMod.resolveDegree === 'function',
+    `resolveDegree is ${typeof jamGuideMod.resolveDegree}, expected an exported function — the export at JamGuide.jsx (see its header) was removed; the drift guard lost its direct probe`)
+})
+
 for (const [deg, row] of Object.entries(DEGREE_TABLE)) {
   check(`validator resolveDegree('${deg}') matches the pinned table for all 14 qualities`, () => {
     Q14.forEach((quality, qi) => {
@@ -945,6 +975,14 @@ for (const [deg, row] of Object.entries(DEGREE_TABLE)) {
       const got = probeValidatorResolveDegree(deg, quality)
       assert(got === want,
         `resolveDegree('${deg}', '${quality}') drifted: validator says ${got}, pinned table says ${want} — re-sync scripts/validate-kb.mjs ↔ src/components/JamGuide.jsx (hand-synced pair) or fix the table if the contract legitimately changed`)
+    })
+  })
+  check(`JamGuide resolveDegree('${deg}') matches the pinned table for all 14 qualities`, () => {
+    Q14.forEach((quality, qi) => {
+      const want = Array.isArray(row) ? row[qi] : row
+      const got = jamGuideMod.resolveDegree(String(deg), quality) ?? null
+      assert(got === want,
+        `resolveDegree('${deg}', '${quality}') drifted: JamGuide.jsx says ${got}, pinned table says ${want} — re-sync src/components/JamGuide.jsx ↔ scripts/validate-kb.mjs (hand-synced pair) or fix the table if the contract legitimately changed`)
     })
   })
 }
