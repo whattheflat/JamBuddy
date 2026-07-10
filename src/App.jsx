@@ -151,24 +151,65 @@ export default function App() {
     chromaIdxRef.current = 0
   }, [config.chromaSmooth])
 
-  // ── Detect progression — require 2 consecutive identical results to commit ────
+  // ── Progression commit layer (task L-31) ─────────────────────────────────────
+  // Runs once per chord commit. progressionVoteRef holds
+  // { committedKey, candidateKey, candidateCount } — null until first evidence.
+  //
+  // Thresholds are in chord-commits (one detector run each):
+  //  · COMMIT_VOTES = 2  — first commit needs 2 consecutive identical detections
+  //    (≈ one bar). Post-L-30 detection is stable on clean loops so this lands
+  //    immediately; a noisy 2-rep history flaps through data-faithful sub-cycles
+  //    that never repeat twice in a row, so noise can't commit early.
+  //  · REPLACE_VOTES = 3 — replacing a committed loop needs 3 consecutive
+  //    detections of the SAME new loop: one transient detection (or an
+  //    alternating flap) must never displace the loop the musician is still in;
+  //    a genuine section change is detected consistently and just lands one
+  //    commit later than a first commit would.
+  //  · NULL_CLEAR = 6    — the detector only returns null once the loop has
+  //    aged out of its 32-commit window (it needs 2 exact in-window
+  //    occurrences): traced, that is ~28 commits of foreign material after
+  //    the loop last played. Fills, turnarounds and window-boundary resumes
+  //    yield non-null sub-cycle detections rather than nulls (traced), so
+  //    they can NEVER clear a committed loop — a new established loop
+  //    replaces via REPLACE_VOTES instead. A null run therefore means the
+  //    jam truly left loop-land ~30 commits ago; 6 more (≈ two bars of
+  //    structureless playing) confirms it wasn't a flicker before the
+  //    display goes dark. (The old value 4 was sized as if nulls happened
+  //    during fills — post-L-30 they don't.)
+  const COMMIT_VOTES  = 2
+  const REPLACE_VOTES = 3
+  const NULL_CLEAR    = 6
   useEffect(() => {
     const detected = detectRepeatingProgression(chordHistory)
+    const vote = progressionVoteRef.current
     if (!detected) {
       progressionMissRef.current++
-      // Clear stale loop after 4 chord changes with no pattern found
-      if (progressionMissRef.current >= 4) {
+      if (progressionMissRef.current >= NULL_CLEAR) {
         setDetectedProgression(null)
         progressionVoteRef.current = null
       }
       return
     }
-    progressionMissRef.current = 0
+    progressionMissRef.current = 0 // any detected structure keeps the committed loop alive
     const key = detected.join(',')
-    if (progressionVoteRef.current === key) {
+
+    if (vote && vote.committedKey === key) {
+      // Agreement with the committed loop — refresh it, drop any pending rival.
       setDetectedProgression(detected)
+      vote.candidateKey = null
+      vote.candidateCount = 0
+      return
+    }
+
+    const committedKey = vote ? vote.committedKey : null
+    if (vote && vote.candidateKey === key) {
+      vote.candidateCount++
     } else {
-      progressionVoteRef.current = key
+      progressionVoteRef.current = { committedKey, candidateKey: key, candidateCount: 1 }
+    }
+    if (progressionVoteRef.current.candidateCount >= (committedKey ? REPLACE_VOTES : COMMIT_VOTES)) {
+      setDetectedProgression(detected)
+      progressionVoteRef.current = { committedKey: key, candidateKey: null, candidateCount: 0 }
     }
   }, [chordHistory])
 

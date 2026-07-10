@@ -600,8 +600,10 @@ function canonicalize(pattern) {
  * section outscores a longer stale one. Requires ≥2 EXACT occurrences: an
  * edit-tolerant occurrence corroborates a loop but cannot establish it — a
  * loop means the sequence came back exactly, and a ghost slice that absorbs a
- * noise chord into itself occurs exactly only once by construction. Returns
- * the canonical (rotation-normalised) best pattern.
+ * noise chord into itself rarely recurs exactly (only phase-locked corruption
+ * of the same slot by the same chord can make one recur — and such data is
+ * genuinely periodic at that longer length). Returns the canonical
+ * (rotation-normalised) best pattern.
  */
 export function detectRepeatingProgression(history) {
   if (!history || history.length < 6) return null
