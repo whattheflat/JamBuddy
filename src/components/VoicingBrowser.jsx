@@ -37,6 +37,11 @@
 //   show    — 'guitar' | 'piano' | 'both' (default 'both', task D-23): which
 //             instrument section(s) to render. Any other value falls back to
 //             both, so every pre-existing mount renders identically with no prop.
+//   dense   — boolean (default false, task L-33 — additive per D-31 §5): trims
+//             section padding and suppresses the per-mount mic-feedback
+//             microcopy, for mounts inside the GlanceRail accordion where the
+//             rail shows that microcopy ONCE for the whole rail (D-31 §2.5).
+//             Every pre-existing mount renders identically with no prop.
 
 import { useEffect, useMemo, useRef } from 'react'
 import ChordDiagram from './ChordDiagram'
@@ -135,7 +140,7 @@ function GalleryCell({ label, playLabel, onPlay, children }) {
 
 // ─── The gallery ──────────────────────────────────────────────────────────────
 
-export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'both' }) {
+export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'both', dense = false }) {
   const pc = mod12(Number.isFinite(rootPc) ? rootPc : 0)
   const name = chordName(pc, quality)
   const chordKey = `${pc}:${quality}`
@@ -196,7 +201,7 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
       {showGuitar && (
       <section
         aria-label={`Guitar voicings for ${name}`}
-        className="min-w-[240px] flex-1 basis-[300px] rounded-lg border border-border bg-panel p-3"
+        className={`min-w-[240px] flex-1 basis-[300px] rounded-lg border border-border bg-panel ${dense ? 'p-2' : 'p-3'}`}
       >
         <div className="mb-2">
           <SectionHeading>Guitar · {name}</SectionHeading>
@@ -232,7 +237,7 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
       {showPiano && (
       <section
         aria-label={`Piano voicings for ${name}`}
-        className="min-w-[240px] flex-1 basis-[300px] rounded-lg border border-border bg-panel p-3"
+        className={`min-w-[240px] flex-1 basis-[300px] rounded-lg border border-border bg-panel ${dense ? 'p-2' : 'p-3'}`}
       >
         <div className="mb-2">
           <SectionHeading>Piano · {name}</SectionHeading>
@@ -261,11 +266,15 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
       )}
 
       {/* Mic-feedback caveat, per the L-20 header + D-20 §3 (microcopy tier).
-          At least one section always renders (see the gating above), so this stays. */}
-      <p className="w-full basis-full text-[11px] text-gray-500">
-        Previews play through your speakers — while the mic is live, detection may
-        hear them.
-      </p>
+          At least one section always renders (see the gating above), so this
+          stays — except under `dense`, where the GlanceRail shows the SAME
+          microcopy once for the whole rail (D-31 §2.5) instead of per gallery. */}
+      {!dense && (
+        <p className="w-full basis-full text-[11px] text-gray-500">
+          Previews play through your speakers — while the mic is live, detection may
+          hear them.
+        </p>
+      )}
     </div>
   )
 }

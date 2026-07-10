@@ -1,14 +1,14 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import kb from '../data/kb/index.js'
 import { buildLoopIndex, matchLoopToProgression, findLoopPosition, chordRootPC } from '../lib/match'
 import { NOTES, CHORD_TYPES } from '../lib/theory'
 import RoadmapTrack from './RoadmapTrack'
-import ChordDiagram from './ChordDiagram'
-import MiniPiano from './MiniPiano'
+import GlanceRail from './GlanceRail'
 import VoicingBrowser from './VoicingBrowser'
 import LickCard, { TechniqueLegend } from './LickCard'
 import { ExploreSection, VoicingsSection, LevelChips } from './ExplorePanel'
 import { pianoVoicingChain } from '../lib/piano'
+import { parseChord } from '../lib/voicings'
 
 // ─── JamGuide — the Knowledge Center bottom dock ──────────────────────────────
 //
@@ -133,6 +133,34 @@ function recipeVoicing(recipe, rootPc, quality) {
   }
 }
 
+// ─── Licks helpers (shared by LicksSection + the glance LicksStrip) ───────────
+//
+// `licksFor` was a closure-local inside LicksSection; lifted to module scope
+// during the L-33 restructure (D-31 §5) so the strip shares it instead of
+// duplicating the defensive read. Licks are guitar-only in the KB (C-20 schema).
+function licksFor(id) {
+  const l = kb?.[id]?.instruments?.guitar?.licks
+  return Array.isArray(l) ? l : []
+}
+
+// Level-filter rule (D-20 §4): licks without a `level` count as foundation.
+const lickLevel = (l) => (l?.level === 'intermediate' ? 'intermediate' : 'foundation')
+
+// Token-boundary chordContext match (D-31 §2.4). `chordContext` is FREE TEXT
+// ("over the I7", "♭VII9 → I9, landing on the One", "i7/i9 Dorian vamp") — a
+// naive substring would make rn "I" match "♭VII" / "Imaj7" / "I7". So: tokenise
+// the text on chord-symbol characters and require EXACT token equality against
+// the station's rn or quality key. Case-sensitive — Roman-numeral case is
+// semantic ("i" minor ≠ "I" major).
+const CONTEXT_TOKEN_RE = /[A-Za-z0-9#♭]+/g
+function lickFitsContext(lick, context) {
+  if (!context) return false
+  const ctx = typeof lick?.chordContext === 'string' ? lick.chordContext : ''
+  const tokens = ctx.match(CONTEXT_TOKEN_RE) ?? []
+  const wanted = [context.rn, context.quality].filter(Boolean)
+  return wanted.length > 0 && tokens.some(t => wanted.includes(t))
+}
+
 export default function JamGuide({ detectedProgression, keyInfo, chordHistory = [], bpm, currentChord, onFocusChord, onChordClick }) {
   const [open, setOpen] = useState(false)
 
@@ -216,6 +244,16 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
     return (((position - match.rotation) % n) + n) % n
   }, [match.matched, match.progression, match.rotation, position])
 
+  // ── Heard-live fallback chord (L-33, D-31 §2.3) ─────────────────────────────
+  // No loop matched but chords are committing → the jam section shows a single
+  // expanded gallery for the live chord, re-aimed on every commit. parseChord is
+  // the same src/lib/voicings.js parser VoicingsSection uses; unparseable names
+  // yield null and keep the dashed empty state.
+  const liveChord = useMemo(
+    () => (!match.matched && currentChord ? parseChord(currentChord) : null),
+    [match.matched, currentChord]
+  )
+
   // ── Per-station voicings ────────────────────────────────────────────────────
   // Stations are canonical KB order — index i aligns 1:1 with
   // progression.degrees[i] (the same station order RoadmapTrack renders). Each
@@ -278,22 +316,27 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
     return stations
   }, [match.matched, match.progression, match.style, instrument, keyRoot])
 
-  // ── Tap-to-enlarge: which station's voicing is expanded (full diagram). ──
-  const [selectedStation, setSelectedStation] = useState(null)
-  // Reset the selection whenever the loop or style changes underneath us.
-  useEffect(() => { setSelectedStation(null) }, [match.id, match.style, instrument])
+  // ── Pinned station (L-33 — replaces tap-to-enlarge `selectedStation`, same
+  // semantics): pinning halts the rail's auto-follow and holds that station's
+  // gallery open. null = follow the jam. ──
+  const [pinnedStation, setPinnedStation] = useState(null)
+  // Reset the pin whenever the loop or style changes underneath us.
+  useEffect(() => { setPinnedStation(null) }, [match.id, match.style, instrument])
 
   // ── Cross-link to the main Fretboard (D-03) ─────────────────────────────────
-  // When a station is selected, report its {rootPc, quality} upward so the
-  // Fretboard can light that chord's guide tones; clear (null) on deselect. The
-  // reset effect above sets selectedStation → null on loop/style/instrument
+  // When a station is PINNED, report its {rootPc, quality} upward so the
+  // Fretboard can light that chord's guide tones; clear (null) on unpin. The
+  // reset effect above sets pinnedStation → null on loop/style/instrument
   // change, which flows through here and clears the highlight too. Guarded so
   // the component still works standalone (onFocusChord optional).
+  // Auto-follow (the unpinned accordion) NEVER emits focus-chord — repainting
+  // the player's fretboard uninvited every chord change would fight their own
+  // key view (D-31 §2.6). Only the pin gesture reaches this effect.
   useEffect(() => {
     if (!onFocusChord) return
-    const st = selectedStation != null ? stationVoicings[selectedStation] : null
+    const st = pinnedStation != null ? stationVoicings[pinnedStation] : null
     onFocusChord(st ? { rootPc: st.rootPc, quality: st.quality } : null)
-  }, [selectedStation, stationVoicings, onFocusChord])
+  }, [pinnedStation, stationVoicings, onFocusChord])
 
   // Clear the Fretboard highlight when JamGuide unmounts.
   useEffect(() => () => { onFocusChord?.(null) }, [onFocusChord])
@@ -415,7 +458,7 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
             </div>
           </div>
 
-          {/* ── Roadmap slot (D-02 assembly) ── */}
+          {/* ── Roadmap slot (D-02 assembly; L-33 glance fallbacks) ── */}
           <div data-roadmap-slot className="flex-1 min-h-0 p-4 overflow-auto">
             {match.matched ? (
               <RoadmapAssembly
@@ -425,9 +468,40 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
                 position={canonicalPos}
                 bpm={bpm}
                 stationVoicings={stationVoicings}
-                selectedStation={selectedStation}
-                onSelectStation={setSelectedStation}
+                pinnedStation={pinnedStation}
+                onPin={setPinnedStation}
+                instrument={instrument}
+                styleId={activeStyle}
+                levels={levels}
               />
+            ) : liveChord ? (
+              /* No loop matched, but chords are committing (D-31 §2.3): the rail
+                 degrades to a single "heard live" gallery, re-aimed on every
+                 chord commit. Auto-follow only — nothing plays by itself. */
+              <div className="flex flex-col gap-4">
+                <section
+                  className="rounded-2xl border border-border bg-panel p-3"
+                  aria-label={`Heard live — every ${instrument} voicing of ${currentChord}`}
+                >
+                  <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+                    Heard live · {currentChord} — every voicing
+                  </h4>
+                  <p className="mb-2 text-[11px] text-gray-500">
+                    {detectedProgression?.length
+                      ? `Heard ${detectedProgression.join(' → ')} — no ${activeStyle} pattern matched yet; following the chord as it commits.`
+                      : 'No repeating loop yet — following the chord as it commits.'}
+                  </p>
+                  <VoicingBrowser rootPc={liveChord.rootPc} quality={liveChord.type} show={instrument} />
+                </section>
+                {/* No station rn without a loop — context sort falls back to the
+                    live chord's quality key (e.g. a "dom7" lick fits a live G7). */}
+                <LicksStrip
+                  styleId={activeStyle}
+                  levels={levels}
+                  instrument={instrument}
+                  context={{ rn: '', quality: liveChord.type, label: currentChord }}
+                />
+              </div>
             ) : (
               <div
                 className="h-full min-h-[200px] flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border text-center"
@@ -486,10 +560,6 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
 // work whether or not that data has landed, hence the defensive reads and the
 // honest per-style empty states). One TechniqueLegend per grid, never per card.
 function LicksSection({ styles, levels, onToggleLevel }) {
-  const licksFor = (id) => {
-    const l = kb?.[id]?.instruments?.guitar?.licks
-    return Array.isArray(l) ? l : []
-  }
   const stylesWithLicks = useMemo(
     () => styles.filter(s => licksFor(s.id).length > 0),
     [styles] // kb is a static module import
@@ -501,7 +571,7 @@ function LicksSection({ styles, levels, onToggleLevel }) {
 
   const all = licksFor(activeStyle)
   // Licks without a `level` count as foundation (D-20 §4).
-  const visible = all.filter(l => levels[l?.level === 'intermediate' ? 'intermediate' : 'foundation'])
+  const visible = all.filter(l => levels[lickLevel(l)])
 
   return (
     <div className="flex flex-col gap-4">
@@ -572,31 +642,94 @@ function LicksSection({ styles, levels, onToggleLevel }) {
   )
 }
 
+// ─── LicksStrip — glanceable licks below the rail (L-33, D-31 §2.4) ───────────
+//
+// Thumb LickCards for the active style, level-filtered, sorted current-station-
+// context-first via the token-boundary matcher above. The "fits X — now" accent
+// ring + microcopy are STRIP-OWNED chrome rendered AROUND the card — LickCard
+// itself is untouched and shows chordContext only at size="full". Licks are
+// guitar-only in the KB, so under the piano tab the strip still shows them and
+// the heading says so. Style has no licks (or the level filter empties it) →
+// the strip hides entirely: an empty state would steal glance space to say
+// nothing. Tap a thumb → the card enlarges inline (comfort, not information).
+//
+//   styleId    — KB style whose licks to show (the active style)
+//   levels     — the shared foundation/intermediate filter
+//   instrument — current instrument tab (piano → honest "guitar licks" heading)
+//   context    — { rn, quality, label } of the playhead station (or the live
+//                chord in the no-loop fallback); null → no context sort
+function LicksStrip({ styleId, levels, instrument, context }) {
+  // Inline enlarge (one card at a time); reset when the style changes.
+  const [expandedId, setExpandedId] = useState(null)
+  useEffect(() => { setExpandedId(null) }, [styleId])
+
+  const visible = licksFor(styleId).filter(l => levels[lickLevel(l)])
+  const fitted = visible.filter(l => lickFitsContext(l, context))
+  const rest = visible.filter(l => !lickFitsContext(l, context))
+  const sorted = [...fitted, ...rest]
+
+  if (sorted.length === 0) return null
+
+  const styleLabel = kb?.[styleId]?.meta?.label ?? styleId
+  const fitLabel = typeof context?.label === 'string' ? context.label : null
+
+  return (
+    <section
+      className="rounded-2xl border border-border bg-panel p-3"
+      aria-label={`${styleLabel} guitar licks`}
+    >
+      <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+        {styleLabel} licks · guitar
+        {instrument === 'piano' ? ' (no piano licks in the KB yet)' : ''}
+        {fitted.length > 0 && fitLabel ? ` · fits ${fitLabel} first` : ''}
+      </h4>
+      <div className="flex items-start gap-2 overflow-x-auto pb-1" role="list">
+        {sorted.map((l, idx) => {
+          const id = l?.id ?? `lick-${idx}`
+          const isFit = idx < fitted.length // sorted = fitted first, then rest
+          const isOpen = expandedId === id
+          return (
+            <div key={id} role="listitem" className={`shrink-0 ${isOpen ? 'w-[340px]' : 'w-[220px]'}`}>
+              <button
+                type="button"
+                aria-pressed={isOpen}
+                aria-label={`${l?.name ?? 'lick'}${isFit && fitLabel ? ` — fits ${fitLabel} now` : ''}; tap to ${isOpen ? 'shrink' : 'enlarge'}`}
+                onClick={() => setExpandedId(isOpen ? null : id)}
+                className={
+                  'block w-full rounded-lg text-left outline-none transition ' +
+                  'focus-visible:ring-2 focus-visible:ring-accent ' +
+                  (isFit ? 'ring-1 ring-accent' : '')
+                }
+              >
+                <LickCard lick={l} size={isOpen ? 'full' : 'thumb'} />
+              </button>
+              {isFit && fitLabel && (
+                <p className="mt-1 text-center text-[10px] font-medium text-accent">
+                  fits {fitLabel} — now
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 // ─── RoadmapAssembly — the live panel body ────────────────────────────────────
 //
-// Composes RoadmapTrack (the improv highway) with a secondary voicing strip
-// (one thumbnail per station, canonical KB order): ChordDiagram when a station
-// carries a guitar `shape`, MiniPiano when it carries a piano `voicing` —
-// authored (L-24) or computed (L-11 — the piano tab). Tapping a thumbnail enlarges it to a full view inline. The active station auto-scrolls
-// into view. Narrow viewports (< ~640px) reflow: the strip wraps and the whole
-// panel scrolls vertically rather than forcing a wide horizontal layout.
+// Composes RoadmapTrack (the improv highway) with the GlanceRail — the
+// station-aligned voicing rail (extracted verbatim in L-33 commit 1; the
+// playhead accordion lands in commit 2). The parent keeps ownership of the
+// pinned-station state so the onFocusChord contract stays in JamGuide.
 function RoadmapAssembly({
   progression, keyRoot, keyMode, position, bpm,
-  stationVoicings, selectedStation, onSelectStation,
+  stationVoicings, pinnedStation, onPin, instrument, styleId, levels,
 }) {
-  const stripRef = useRef(null)
-  const activeRef = useRef(null)
-
-  // Auto-scroll the active station's thumbnail into view as the playhead moves.
-  // Prop-driven (off `position`) — no rAF loop tied to the audio thread.
-  useEffect(() => {
-    if (position < 0 || !activeRef.current) return
-    activeRef.current.scrollIntoView({
-      behavior: 'smooth', inline: 'center', block: 'nearest',
-    })
-  }, [position])
-
-  const selected = selectedStation != null ? stationVoicings[selectedStation] : null
+  // Licks-strip context = the PLAYHEAD station (position -1 → station 0, the
+  // same rule as the rail's expansion). The pin freezes the accordion, not the
+  // strip — the strip keeps re-sorting with the jam (D-31 §2.4).
+  const contextStation = stationVoicings[position >= 0 ? position : 0] ?? null
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
@@ -609,111 +742,24 @@ function RoadmapAssembly({
         bpm={bpm}
       />
 
-      {/* Secondary voicing strip: one thumbnail per station, canonical order. */}
-      {stationVoicings.length > 0 && (
-        <section
-          className="rounded-2xl border border-border bg-panel p-3"
-          aria-label="Voicing thumbnails"
-        >
-          <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
-            Voicings · tap to enlarge
-          </h4>
-          <div
-            ref={stripRef}
-            className="flex flex-wrap gap-2 overflow-x-auto sm:flex-nowrap"
-            role="list"
-          >
-            {stationVoicings.map((st, i) => {
-              const isNow = i === position
-              const isSelected = i === selectedStation
-              return (
-                <button
-                  key={i}
-                  ref={isNow ? activeRef : undefined}
-                  type="button"
-                  role="listitem"
-                  aria-pressed={isSelected}
-                  aria-current={isNow ? 'true' : undefined}
-                  onClick={() => onSelectStation(isSelected ? null : i)}
-                  title={`${st.label} — ${st.rn || `station ${i + 1}`}`}
-                  className={
-                    `flex shrink-0 flex-col items-center gap-1 rounded-lg border p-2 outline-none transition ` +
-                    `focus-visible:ring-2 focus-visible:ring-accent ` +
-                    (isNow
-                      ? 'border-accent bg-accent/10 ring-1 ring-accent'
-                      : isSelected
-                        ? 'border-accent/60 bg-accent/5'
-                        : 'border-border bg-surface hover:border-gray-500')
-                  }
-                  style={{ opacity: isNow ? 1 : 0.85 }}
-                >
-                  {st.voicing ? (
-                    <>
-                      <MiniPiano voicing={st.voicing} size="thumb" />
-                      {/* MiniPiano has no built-in chord label; mirror ChordDiagram's
-                          thumb label (text-gray-300, 9px) so the station stays named. */}
-                      <span className="text-gray-300 leading-none" style={{ fontSize: 9 }}>
-                        {st.label}
-                      </span>
-                    </>
-                  ) : (
-                    <ChordDiagram
-                      shape={st.shape}
-                      keyRoot={keyRoot}
-                      rootPc={st.rootPc}
-                      size="thumb"
-                      label={st.label}
-                    />
-                  )}
-                  {st.rn && (
-                    <span className="text-[9px] font-medium uppercase tracking-wide text-gray-500">
-                      {st.rn}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
+      {/* The playhead accordion (one column per station, canonical order). */}
+      <GlanceRail
+        stations={stationVoicings}
+        activeIndex={position}
+        pinnedIndex={pinnedStation}
+        onPin={onPin}
+        instrument={instrument}
+        keyRoot={keyRoot}
+      />
 
-          {/* Enlarged view of the tapped station (deferred fretboard cross-link
-              lives here instead — see D-02 return note). */}
-          {selected && (
-            <div className="mt-3 flex flex-col items-center gap-2 border-t border-border pt-3">
-              {selected.voicing ? (
-                <>
-                  <MiniPiano voicing={selected.voicing} size="full" />
-                  <span className="text-gray-300 leading-none" style={{ fontSize: 12 }}>
-                    {`${selected.label}${selected.rn ? ` · ${selected.rn}` : ''}`}
-                  </span>
-                </>
-              ) : (
-                <ChordDiagram
-                  shape={selected.shape}
-                  keyRoot={keyRoot}
-                  rootPc={selected.rootPc}
-                  size="full"
-                  label={`${selected.label}${selected.rn ? ` · ${selected.rn}` : ''}`}
-                />
-              )}
-              {/* Browse + audition every voicing of this station's chord (L-21).
-                  Stations already carry {rootPc, quality} (L-11); the browser is
-                  fully self-contained (D-21) and wraps dock-friendly. Purely
-                  additive — the onFocusChord guide-tone contract above is
-                  untouched (it keys off selectedStation, not this render). */}
-              <div className="w-full">
-                <VoicingBrowser rootPc={selected.rootPc} quality={selected.quality} />
-              </div>
-              <button
-                type="button"
-                onClick={() => onSelectStation(null)}
-                className="text-[11px] text-gray-500 underline-offset-2 hover:text-gray-300 hover:underline focus-visible:ring-2 focus-visible:ring-accent rounded outline-none"
-              >
-                close
-              </button>
-            </div>
-          )}
-        </section>
-      )}
+      {/* Licks for the active style, current-station-context first. At 1280×900
+          this sits just below the fold — one scroll-flick down (D-31 §3). */}
+      <LicksStrip
+        styleId={styleId}
+        levels={levels}
+        instrument={instrument}
+        context={contextStation}
+      />
     </div>
   )
 }
