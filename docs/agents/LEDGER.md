@@ -7,7 +7,36 @@ The shared queue all agents read and write. Lifecycle and rules: [`PROTOCOL.md`]
 
 ---
 
-## Active sprint: `sprint-glance-and-loop` (branch: `sprint-jamguide-piano` — continued; commits extend PR #3)
+## Active sprint: `sprint-integrated-glance` (branch: `sprint-jamguide-piano` — continued; commits extend PR #3)
+
+**Goal (user directive 2026-07-10, after testing the glance-mode sprint — "its already a lot better, but"):**
+
+1. **Move it up & integrate** — "i would like to move it up and integrate it somewhat in the space of the main module up top. or maybe right below it as it is super important." The Jam Guide content is currently the LAST mount in App.jsx (line ~712); the main module (ProgressionBanner + instrument view) is at ~609-622.
+2. **One loop display** — "i would like to be able to see the loop clearly, no need to have this repeated again. as its already in the main module." ProgressionBanner (top) and the Roadmap track (inside JamGuide) both show the detected loop — exactly one clear loop display must survive.
+3. **One instrument selector** — "only one selection for GUITAR/PIANO/BASS and everything should show in that instrument." App.jsx line 58 ALREADY holds global `instrument` state ('piano'|'guitar'|'bass') driving the main views; JamGuide ignores it and has its own internal tabs. Everything (voicings, licks, guide) must follow the one selector. Bass has a main-view BassFretboard but zero KB content — needs an honest state (and a stretch chain to make it real).
+4. **All chords' voicings visible at once** — "it's difficult to see as it changes when the chord is not playing so i'd like to see all the chords and their voicings in a specific way in case a loop is detected (or at least just like 4 chords or something at least, so you can follow and potentially learn new ways to play it while you are playing the loop." The playhead accordion (only the active station expanded) is hard to follow live — show EVERY loop station's voicings simultaneously (≥4 chords), playhead highlights rather than reveals.
+5. **Scroll-first** — "scrolling is easier then clicking." Layout principle for everything above.
+
+**Loop:** `/jam-loop` every 30 min for 12 h (24 iterations), started 2026-07-10 evening (cron 13,43). "let each agent do a part and revise the work" — standard ensemble + gates. Weights: Luthier 3, Muse 3, Professor 2, Critic gate.
+
+| id | title | domain | status | depends-on | files (lock) | definition of done |
+|----|-------|--------|--------|-----------|--------------|--------------------|
+| M-05 | Seed `sprint-integrated-glance`; schedule the 24×30m loop | maestro | done | — | `docs/agents/LEDGER.md` | seeded, cron created |
+| D-40 | Integration concept doc: (a) where the Jam Guide content lands relative to the main module (in it vs right below — pick, record rationale); (b) which loop display survives (ProgressionBanner vs Roadmap track — the loser's unique value, e.g. guide-tone rails, must be honestly dispositioned); (c) JamGuide obeys App's existing global `instrument` — internal tabs retired; honest bass state until the bass chain lands; (d) the all-stations-expanded voicings layout (≥4 chords visible, playhead HIGHLIGHTS not reveals, scroll-first — the user explicitly licensed scrolling, so D-31's "everything expanded" rejection is overturned by directive); (e) what remains of the four-section dock below; (f) honest space math + migration order. No user gate: pick strongest, record rejected alternatives | design | ready | — | `docs/design/integrated-glance.md` | doc names every component, the single-loop-display call, the instrument-threading contract, ≥2 rejected alternatives, bounded L-40/D-41 scopes |
+| L-40 | App restructure per D-40: promote the Jam Guide content to the D-40 position; retire the duplicated loop display per the doc's call; JamGuide takes `instrument` as a prop from App's existing selector (internal tabs removed; VoicingsSection/LicksSection/ExplorePanel mounts follow too); honest bass empty-state. 🚨 App.jsx changes = layout/mount/UI-state ONLY — audio callbacks/refs/AudioCapture untouched (grep-gated) | engineering | backlog | D-40 | `src/App.jsx` (layout + UI-state only), `src/components/JamGuide.jsx` (+ files D-40 names — re-lock at promotion) | one selector drives everything; guide content up top; loop shown exactly once; build + smoke green; audio contract grep-clean |
+| D-41 | All-expanded voicings rail per D-40: every station's gallery visible simultaneously (≥4 chords), active station highlighted by the playhead (accent ring/header, NO reveal/hide), scroll-first reflow, licks strip follows the global instrument per the doc | design | backlog | D-40, L-40 | `src/components/GlanceRail.jsx` (+ per doc — re-lock at promotion) | all voicings of all loop chords on screen/scroll with zero clicks; playhead never hides content; AA + tokens; build + smoke green |
+| C-40 | Drift guards in smoke (two hand-synced duplications, backlog debt): (a) JamGuide's `resolveDegree` copy vs validator's — 16-degree × 14-quality truth table; (b) technique vocab `validate-kb.mjs` LICK_TECHNIQUES ↔ `LickCard.jsx` TECHNIQUE_VOCAB. Ride-along: fix `scripts/loop-fixtures.mjs` header's stale "App.jsx:322-324" line-ref (C-31 sweep finding) | quality | ready | — | `scripts/smoke.mjs`, `scripts/loop-fixtures.mjs` (comment only) | drift in either duplication turns smoke red (sabotage-proven); header ref current; smoke green |
+| P-40 | Refresh `docs/kb-backlog.md`: mark all shipped cells done (gospel/pop guitar; jazz/gospel/rnb/blues piano), set the bass column as next (blues → jazz → funk per plan) | content | ready | — | `docs/kb-backlog.md` | backlog reflects reality; next-cell pointer correct |
+| C-41 | Bass play schema (additive): SCHEMA.md + validator + smoke bite-test for bass patterns (per-station patterns: root/fifth/approach-note walks — design the minimal honest shape with 4-string, fret 0-15 representation) | quality | backlog | C-40 | `src/data/kb/SCHEMA.md`, `scripts/validate-kb.mjs`, `scripts/smoke.mjs` | schema documented; validator enforces; existing KB untouched-green; smoke proves the check bites |
+| P-41 | First bass cell: **blues bass** (kb-backlog order blues → jazz → funk) | content | backlog | C-41 | `src/data/kb/blues/bass.js`, `src/data/kb/index.js` | validator green; every pattern playable as written; prose arithmetic-verified |
+| L-42 | Minimal bass pattern renderer for the guide (per-station bass display per D-40's naming; BassFretboard covers the main view already) — makes the BASS selector real end-to-end | engineering | backlog | C-41, P-41, L-40 | per D-40 doc — re-lock at promotion | bass stations render the authored patterns; guitar/piano paths untouched; build + smoke green |
+| C-42 | Sprint-end sweep + PR #3 update per PROTOCOL §6 | quality | backlog | L-40, D-41 | (none — verification) | all green; PR updated |
+
+> Sequencing: D-40 ‖ C-40 ‖ P-40 file-disjoint, ready now. Then D-40 → L-40 → D-41 (App/JamGuide/GlanceRail serialized — same surfaces), and C-40 → C-41 → P-41 → L-42 (bass chain, stretch). C-42 closes. Critic gates every task.
+
+---
+
+## Shipped sprint: `sprint-glance-and-loop` (branch: `sprint-jamguide-piano` — complete 2026-07-10, 4 iterations, PR #3 updated)
 
 **Goal (user directive 2026-07-10):** three asks, in the user's words:
 
