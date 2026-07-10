@@ -3,6 +3,7 @@ import kb from '../data/kb/index.js'
 import { buildLoopIndex, matchLoopToProgression, findLoopPosition, chordRootPC } from '../lib/match'
 import { NOTES, CHORD_TYPES } from '../lib/theory'
 import GlanceRail, { AimDots, SoloLabel } from './GlanceRail'
+import BassPatternCard from './BassPatternCard'
 import VoicingBrowser from './VoicingBrowser'
 import LickCard, { TechniqueLegend } from './LickCard'
 import { ExploreSection, VoicingsSection, LevelChips } from './ExplorePanel'
@@ -51,9 +52,12 @@ const SECTIONS = [
 // dependent ('3' → ♭3 for min7, '7' → the chord's actual 7th…). This mirrors
 // `resolveDegree` in scripts/validate-kb.mjs — the KB contract's reference
 // implementation — replicated here because src/ must not import from scripts/.
-// Keep the two in sync by hand. Exported for the smoke drift guard ONLY
+// Keep the two in sync by hand. Exported for the smoke drift guard
 // (scripts/smoke.mjs §7 sweeps both copies against a pinned truth table —
-// C-40 follow-up landed with L-40); no component imports this.
+// C-40 follow-up landed with L-40) and for BassPatternCard, which realizes
+// SCHEMA.md bass-pattern degrees through the same contract (L-42; the import
+// cycle JamGuide → BassPatternCard → JamGuide is benign — a hoisted function
+// used only at render time).
 export function resolveDegree(deg, quality) {
   const iv = CHORD_TYPES[quality]?.intervals
   if (!iv) return null
@@ -246,9 +250,10 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
   //            station whose recipe fails to resolve falls back to the computed
   //            chain individually. The station's rootPc is attached so MiniPiano
   //            marks the root key ("R") reliably.
-  //   bass   → neither payload (both stay null): no authored bass patterns exist
-  //            yet, so the band renders the computed BassGuideRows from the
-  //            station identities alone (L-40 step 3, D-40 §3).
+  //   bass   → neither payload (both stay null): authored bass patterns flow
+  //            through the separate `bassPlays` memo below into BassGuideRows
+  //            (L-42) — the station entries carry identity only, exactly as in
+  //            the pre-pack honest state (L-40 step 3, D-40 §3).
   const stationVoicings = useMemo(() => {
     if (!match.matched) return []
     const prog = match.progression
@@ -295,6 +300,18 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
     return stations
   }, [match.matched, match.progression, match.style, instrument, keyRoot])
 
+  // ── Authored bass plays (L-42) ──────────────────────────────────────────────
+  // When the matched style ships a bass pack with plays for this progression,
+  // BassGuideRows renders each play's per-station pattern card in the gallery
+  // slot (all plays side by side, the D-30 gallery idiom); null keeps the
+  // computed root·fifth·approach fallback — styles without a bass cell and the
+  // heard-live path are unchanged.
+  const bassPlays = useMemo(() => {
+    if (!match.matched || instrument !== 'bass') return null
+    const plays = kb[match.style]?.instruments?.bass?.plays?.[match.progression?.id]
+    return Array.isArray(plays) && plays.length > 0 ? plays : null
+  }, [match.matched, match.style, match.progression, instrument])
+
   // ── Focused station (D-41 — the L-33 pin, simplified per D-40 §4: with every
   // row always expanded there is nothing to hold open, so the gesture collapses
   // to a focus TOGGLE on the row header). Same JamGuide-owned state, same reset
@@ -337,11 +354,16 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
 
       {match.matched ? (
         instrument === 'bass' ? (
-          /* Honest bass state (D-40 §3): the KB has no bass patterns yet and
-             both gallery generators are wrong for bass — computed roots/fifths/
-             approaches instead. The licks strip hides too (guitar tab licks
-             are noise to a bassist mid-jam). */
-          <BassGuideRows stations={stationVoicings} activeIndex={canonicalPos} keyMode={keyInfo?.mode} />
+          /* Bass rows (D-40 §3): authored pattern cards when the matched style
+             ships a bass pack (L-42), computed roots/fifths/approaches as the
+             honest fallback otherwise. The licks strip hides either way
+             (guitar tab licks are noise to a bassist mid-jam). */
+          <BassGuideRows
+            stations={stationVoicings}
+            activeIndex={canonicalPos}
+            keyMode={keyInfo?.mode}
+            plays={bassPlays}
+          />
         ) : (
         <div className="flex flex-col gap-3">
           {/* The voicing rail — ALL stations expanded as vertical rows; the
@@ -415,37 +437,49 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
   )
 }
 
-// ─── BassGuideRows — the honest bass state (L-40 step 3, D-40 §3) ─────────────
+// ─── BassGuideRows — the bass rail (L-40 step 3 + L-42, D-40 §3) ──────────────
 //
-// The KB has zero authored bass content (the C-41 → P-41 → L-42 chain builds
-// it, blues first) and both gallery generators are wrong for bass: guitar
-// shapes are not bass patterns, pianoVoicing is piano. Showing either would
-// break the one-selector promise — so each station renders the honest useful
-// minimum, PURE ARITHMETIC on data the band already has (no theory.js change):
-// the ROOT, the FIFTH (root + 7 semitones), and the chromatic APPROACH into the
-// NEXT station's root (one semitone below it — "approach: G♯ → A"). The last
-// station approaches the first (the loop wraps). Each row carries the same
-// header anatomy as the GlanceRail rows (D-41, D-40 §3/§4 — chord + rn +
-// solo-scale label + aim dots, via GlanceRail's exported atoms): guide tones
-// ARE the bassist's target notes; none of that education is instrument-
-// specific. L-42 replaces the computed line with an authored BassPatternCard
-// per station when the matched style ships a bass cell — the row structure,
-// highlight, and header need zero changes for it (the D-40 §3 contract).
+// Two states, same row structure, header, and highlight (the D-40 §3 contract):
+//
+//  · AUTHORED (`plays` non-empty — the matched style ships a bass pack with
+//    plays for this progression, L-42): each station's gallery slot renders
+//    one BassPatternCard per play, side by side (the D-30 gallery idiom — all
+//    of them visible, each with its own ▶). Approach pitches derive from the
+//    NEXT station's root; the last station wraps to the first. The "authored
+//    patterns coming" notice disappears; a per-play feel legend and the rail's
+//    mic-feedback microcopy (there are ▶s now) render once instead.
+//  · COMPUTED (`plays` null — styles without a bass cell, and heard-live):
+//    the honest useful minimum, PURE ARITHMETIC on data the band already has
+//    (no theory.js change): the ROOT, the FIFTH (root + 7), and the chromatic
+//    APPROACH into the NEXT station's root ("approach: G♯ → A"), plus the ONE
+//    rail-level notice.
+//
+// Both states keep the GlanceRail header anatomy (D-41, D-40 §3/§4 — chord +
+// rn + solo-scale label + aim dots via GlanceRail's exported atoms): guide
+// tones ARE the bassist's target notes; none of that education is instrument-
+// specific.
 //
 //   stations    — [{ rootPc, quality, label, rn }] canonical KB order
 //   activeIndex — playhead station (canonicalPos); -1 = none marked "now"
 //   keyMode     — key mode name (soloScale's minor-key dominant nudge)
 //   live        — heard-live single chord: no next chord, so no approach line
-function BassGuideRows({ stations = [], activeIndex = -1, keyMode, live = false }) {
+//   plays       — authored bass plays for the matched progression, or null
+function BassGuideRows({ stations = [], activeIndex = -1, keyMode, live = false, plays = null }) {
   const n = stations.length
   if (n === 0) return null
+  const hasPack = Array.isArray(plays) && plays.length > 0
   return (
     <section
       className="rounded-2xl border border-border bg-panel p-3"
-      aria-label="Bass guide — roots, fifths and approach notes"
+      aria-label={
+        hasPack
+          ? 'Bass guide — authored patterns for this loop'
+          : 'Bass guide — roots, fifths and approach notes'
+      }
     >
       <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
-        Bass · roots, fifths &amp; approaches{live ? ' · heard live' : ''}
+        {hasPack ? 'Bass · patterns for this loop' : 'Bass · roots, fifths & approaches'}
+        {live ? ' · heard live' : ''}
       </h4>
       <div className="flex flex-col gap-2" role="list">
         {stations.map((st, i) => {
@@ -482,30 +516,71 @@ function BassGuideRows({ stations = [], activeIndex = -1, keyMode, live = false 
                 <SoloLabel rootPc={st.rootPc} quality={st.quality} keyMode={keyMode} />
                 <AimDots rootPc={st.rootPc} quality={st.quality} />
               </div>
-              {/* The computed line — the gallery slot until L-42's pattern card. */}
-              <p className="mt-1.5 text-xs text-gray-300">
-                root <span className="font-semibold text-gray-100">{NOTES[st.rootPc]}</span>
-                <span className="text-gray-600"> · </span>
-                fifth <span className="font-semibold text-gray-100">{NOTES[fifthPc]}</span>
-                {next && (
-                  <>
-                    <span className="text-gray-600"> · </span>
-                    approach{' '}
-                    <span className="font-semibold text-gray-100">
-                      {NOTES[approachPc]} → {NOTES[next.rootPc]}
-                    </span>
-                  </>
-                )}
-              </p>
+              {hasPack ? (
+                /* The gallery slot (L-42): one realized pattern card per play,
+                   side by side. The wrap mirrors the GlanceRail cell reflow —
+                   rows wrap, never scroll horizontally (D-40 §4). */
+                <div className="mt-1.5 flex flex-wrap items-stretch gap-2">
+                  {plays.map((play, p) => (
+                    <BassPatternCard
+                      key={p}
+                      rootPc={st.rootPc}
+                      quality={st.quality}
+                      nextRootPc={stations[(i + 1) % n].rootPc}
+                      pattern={play?.chords?.[i]?.pattern}
+                      playLabel={play?.label}
+                      feel={play?.feel}
+                      note={play?.chords?.[i]?.note}
+                      chordLabel={st.label}
+                    />
+                  ))}
+                </div>
+              ) : (
+                /* The computed line — the fallback gallery slot. */
+                <p className="mt-1.5 text-xs text-gray-300">
+                  root <span className="font-semibold text-gray-100">{NOTES[st.rootPc]}</span>
+                  <span className="text-gray-600"> · </span>
+                  fifth <span className="font-semibold text-gray-100">{NOTES[fifthPc]}</span>
+                  {next && (
+                    <>
+                      <span className="text-gray-600"> · </span>
+                      approach{' '}
+                      <span className="font-semibold text-gray-100">
+                        {NOTES[approachPc]} → {NOTES[next.rootPc]}
+                      </span>
+                    </>
+                  )}
+                </p>
+              )}
             </div>
           )
         })}
       </div>
-      {/* ONE notice for the whole rail, not per row (D-40 §3). */}
-      <p className="mt-2 text-[11px] text-gray-500">
-        Authored bass patterns are on the way (blues first) — meanwhile: roots,
-        fifths, and the approach into the next chord.
-      </p>
+      {hasPack ? (
+        <>
+          {/* Per-play groove legend — feel is required schema data; position
+              hint appended when authored. Rendered once, not per row. */}
+          {plays.map((play, p) => (
+            <p key={p} className="mt-2 text-[11px] text-gray-500">
+              <span className="font-medium text-gray-400">{play?.label}</span>
+              {play?.feel ? <> — {play.feel}</> : null}
+              {play?.position ? <> · {play.position}</> : null}
+            </p>
+          ))}
+          {/* Amber + mic microcopy — once for the whole rail (D-31 §2.5). */}
+          <p className="mt-2 text-[11px] text-gray-500">
+            Amber note = the approach into the next chord. ▶ previews play through
+            your speakers — while the mic is live, detection may hear them. Nothing
+            plays automatically.
+          </p>
+        </>
+      ) : (
+        /* ONE notice for the whole rail, not per row (D-40 §3). */
+        <p className="mt-2 text-[11px] text-gray-500">
+          Authored bass patterns are on the way (blues first) — meanwhile: roots,
+          fifths, and the approach into the next chord.
+        </p>
+      )}
     </section>
   )
 }
