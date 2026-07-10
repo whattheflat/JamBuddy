@@ -2,7 +2,7 @@
 //
 // Each fixture is a realistic `chordHistory` as App.jsx commits it (plain chord
 // name strings from matchChordFromChroma — "C", "Am", "G7", "Cmaj7"…; the commit
-// layer at App.jsx:322-324 suppresses ADJACENT duplicates, so histories here are
+// layer at App.jsx:363-365 suppresses ADJACENT duplicates, so histories here are
 // adjacent-dup-free except the one fixture that deliberately tests dups) plus the
 // loop a musician would say they are playing (`expect`, or null for "no loop").
 //

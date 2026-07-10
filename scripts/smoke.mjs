@@ -669,7 +669,143 @@ if (expectedFails) {
   console.log(`  (${expectedFails} annotated expected-fail(s) — the current detectRepeatingProgression's known gaps, awaiting L-30)`)
 }
 
-// ─── 7. Summary + exit code ───────────────────────────────────────────────────
+// ─── 7. Hand-sync drift guards (C-40) ─────────────────────────────────────────
+//
+// Two pieces of logic/data are deliberately duplicated by hand across files
+// (src/ must not import from scripts/, so validator ↔ component pairs can't
+// share a module). These guards turn silent drift into a red smoke run.
+//
+// (a) resolveDegree — scripts/validate-kb.mjs holds the KB contract's reference
+//     implementation; src/components/JamGuide.jsx carries a hand-synced copy
+//     (its header says "keep the two in sync by hand"). If they drift, authored
+//     piano recipes validate against one rule and RENDER with another — wrong
+//     pitches, no error. Guard: a LITERAL 16-degree × 14-quality truth table
+//     (pinned values, NOT derived from CHORD_TYPES at runtime — deriving would
+//     let the expectation co-move with the very code under test) asserted
+//     against the validator's implementation for every pair.
+//       · The validator's resolveDegree is unexported; it is probed BEHAVIOURALLY
+//         through the exported checkPianoRecipe: recipe LH ['1','1','1', deg]
+//         stacks 0 → 12 → 24 → 24 + offset (a repeated pc climbs an octave —
+//         stackHand's documented convention), so the span error always fires
+//         (span 25–36 > MAX_HAND_SPAN 15) and REPORTS the span, from which the
+//         offset is recovered exactly: offset = span − 24 (36 → 0). An
+//         unresolvable degree instead yields the 'unresolvable degree' error.
+//       · JamGuide.jsx's copy is NOT directly comparable today — the function is
+//         module-scoped, unexported (checked 2026-07-10), and no probe reaches
+//         it through the default export. Follow-up filed for the board: an
+//         export-only line on JamGuide's resolveDegree (Luthier — L-40 already
+//         locks JamGuide.jsx) lets this section sweep both copies directly.
+//         Until then this table pins the CONTRACT side; any validator drift
+//         goes red here, and the JamGuide copy is one `export` away from the
+//         same sweep.
+//
+// (b) Technique vocabulary — validate-kb.mjs LICK_TECHNIQUES (the schema gate)
+//     vs LickCard.jsx TECHNIQUE_VOCAB (the renderer's glyph vocabulary). A word
+//     added to one but not the other means licks that validate but render with
+//     no glyph, or dead glyph code. Guard: import BOTH and assert set-equality.
+//     LickCard.jsx is JSX, so a node:module load hook transpiles .jsx on the
+//     fly via esbuild (already in node_modules as Vite's transpiler).
+
+console.log('\nHand-sync drift guards (C-40):')
+
+// -- jsx load hook: lets Node import component files (esbuild transform) -------
+register(
+  'data:text/javascript,' +
+    encodeURIComponent(`
+      import { readFileSync } from 'node:fs'
+      const esbuildP = import(${JSON.stringify(import.meta.resolve('esbuild'))})
+      export async function load(url, context, next) {
+        if (url.endsWith('.jsx')) {
+          const { transform } = await esbuildP
+          const src = readFileSync(new URL(url), 'utf8')
+          const { code } = await transform(src, { loader: 'jsx', jsx: 'automatic', jsxImportSource: 'react' })
+          return { format: 'module', source: code, shortCircuit: true }
+        }
+        return next(url, context)
+      }
+    `),
+  import.meta.url,
+)
+
+// -- (a) resolveDegree truth table ---------------------------------------------
+
+// Quality order for the per-quality rows below (must stay CHORD_TYPES' keys —
+// a new chord quality MUST extend this table, and the check enforces that).
+const Q14 = ['maj', 'min', 'dom7', 'maj7', 'min7', 'dim', 'dim7', 'half_dim', 'aug', 'sus4', 'sus2', 'maj6', 'min6', 'add9']
+
+// resolveDegree(deg, quality) → pitch-class offset from the chord root.
+// Scalar = same for all 14 qualities (the fixed-offset degrees); array = one
+// value per Q14 entry ('3'/'5'/'7' resolve through the quality's intervals).
+// '2' is the canary row: not a legal degree, must stay null everywhere.
+const DEGREE_TABLE = {
+  '1': 0,
+  'b9': 1,
+  '9': 2,
+  '#9': 3,
+  '11': 5,
+  '#11': 6,
+  'b5': 6,
+  'b13': 8,
+  '13': 9,
+  '6': 9,
+  'b3': 3,
+  'b7': 10,
+  //     maj   min   dom7  maj7  min7  dim   dim7  ø     aug   sus4  sus2  maj6  min6  add9
+  '3': [ 4,    3,    4,    4,    3,    3,    3,    3,    4,    5,    2,    4,    3,    4   ],
+  '5': [ 7,    7,    7,    7,    7,    6,    6,    6,    8,    7,    7,    7,    7,    7   ],
+  '7': [ null, null, 10,   11,   10,   null, 9,    10,   null, null, null, 9,    9,    null],
+  '2': null,
+}
+
+// Behavioural probe of the validator's unexported resolveDegree (see header).
+function probeValidatorResolveDegree(deg, quality) {
+  const errs = checkPianoRecipe('probe', { recipe: { LH: ['1', '1', '1', deg] } }, quality)
+  if (errs.some((e) => e.includes(`unresolvable degree '${deg}'`))) return null
+  const m = errs.map((e) => /spans (\d+) semitones/.exec(e)).find(Boolean)
+  if (!m) throw new Error(`probe(${deg}, ${quality}) got neither an 'unresolvable degree' nor a span error — checkPianoRecipe/stackHand changed shape; re-derive the probe. Errors: ${JSON.stringify(errs)}`)
+  const offset = Number(m[1]) - 24
+  return offset === 12 ? 0 : offset // '1'-repeat lands an octave up: span 36 ⇒ offset 0
+}
+
+check('truth table covers 16 degrees × all 14 CHORD_TYPES qualities', () => {
+  const degs = Object.keys(DEGREE_TABLE)
+  assert(degs.length === 16, `expected 16 degrees, table has ${degs.length}`)
+  assert(Q14.join(',') === QUALITIES.join(','),
+    `Q14 ≠ CHORD_TYPES keys — a quality was added/renamed; extend DEGREE_TABLE. Q14: ${Q14} · CHORD_TYPES: ${QUALITIES}`)
+  for (const [deg, row] of Object.entries(DEGREE_TABLE))
+    if (Array.isArray(row)) assert(row.length === 14, `row '${deg}' has ${row.length} entries, expected 14`)
+})
+
+for (const [deg, row] of Object.entries(DEGREE_TABLE)) {
+  check(`validator resolveDegree('${deg}') matches the pinned table for all 14 qualities`, () => {
+    Q14.forEach((quality, qi) => {
+      const want = Array.isArray(row) ? row[qi] : row
+      const got = probeValidatorResolveDegree(deg, quality)
+      assert(got === want,
+        `resolveDegree('${deg}', '${quality}') drifted: validator says ${got}, pinned table says ${want} — re-sync scripts/validate-kb.mjs ↔ src/components/JamGuide.jsx (hand-synced pair) or fix the table if the contract legitimately changed`)
+    })
+  })
+}
+
+// -- (b) technique vocab set-equality -------------------------------------------
+
+const lickCardMod = await load('src/components/LickCard.jsx')
+
+check('LickCard.jsx imports under the jsx hook and exports TECHNIQUE_VOCAB', () => {
+  assert(Array.isArray(lickCardMod.TECHNIQUE_VOCAB), 'TECHNIQUE_VOCAB is not an exported array')
+  assert(lickCardMod.TECHNIQUE_VOCAB.length > 0, 'TECHNIQUE_VOCAB is empty')
+})
+
+check('TECHNIQUE_VOCAB (LickCard.jsx) ≡ LICK_TECHNIQUES (validate-kb.mjs) as sets', () => {
+  const vocab = new Set(lickCardMod.TECHNIQUE_VOCAB ?? [])
+  const schema = new Set(LICK_TECHNIQUES)
+  const missingInCard = [...schema].filter((t) => !vocab.has(t))
+  const missingInSchema = [...vocab].filter((t) => !schema.has(t))
+  assert(missingInCard.length === 0 && missingInSchema.length === 0,
+    `technique vocab drift — in validator but not LickCard: [${missingInCard}] · in LickCard but not validator: [${missingInSchema}] — the two lists are hand-synced; add the word to BOTH or neither`)
+})
+
+// ─── 8. Summary + exit code ───────────────────────────────────────────────────
 
 const total = passed + failures.length
 console.log('')
