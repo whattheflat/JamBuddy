@@ -7,6 +7,7 @@ import jazzPiano from './jazz/piano.js'
 import bluesMeta from './blues/meta.js'
 import bluesProgressions from './blues/progressions.js'
 import bluesGuitar from './blues/guitar.js'
+import bluesPiano from './blues/piano.js'
 import rockMeta from './rock/meta.js'
 import rockProgressions from './rock/progressions.js'
 import rockGuitar from './rock/guitar.js'
@@ -43,7 +44,7 @@ export default {
   blues: {
     meta: bluesMeta,
     progressions: bluesProgressions,
-    instruments: { guitar: bluesGuitar },
+    instruments: { guitar: bluesGuitar, piano: bluesPiano },
   },
   rock: {
     meta: rockMeta,
