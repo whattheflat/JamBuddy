@@ -11,9 +11,8 @@ import DebugView from './components/DebugView'
 import DrumView from './components/DrumView'
 import { NOTES, detectKey, detectTopKeys, matchChordFromChroma, detectRepeatingProgression, getChordTones, getChordCandidates, getNoteHistoryAnalysis } from './lib/theory'
 import ChordDetailModal from './components/ChordDetailModal'
-import CurrentJamPanel from './components/CurrentJamPanel'
 import LoopStation from './components/LoopStation'
-import JamGuide from './components/JamGuide'
+import JamGuide, { KnowledgeDock } from './components/JamGuide'
 import { useLoopEngine } from './services/loopEngine'
 import settingIcon from './assets/setting-icon.png'
 
@@ -630,12 +629,16 @@ export default function App() {
       </div>
 
 
-      {/* ── Current jam — collapsible ── */}
-      <CurrentJamPanel
+      {/* ── Jam Guide band — always open, right below the instrument row (L-40,
+          D-40 §1: CurrentJamPanel's old slot; the loop shows ONCE, in the
+          banner above). Follows the one global instrument selector. ── */}
+      <JamGuide
+        detectedProgression={detectedProgression}
         keyInfo={effectiveKey}
         chordHistory={chordHistory}
-        detectedProgression={detectedProgression}
-        onChordClick={setSelectedChord}
+        currentChord={currentChord}
+        onFocusChord={setJamFocusChord}
+        instrument={instrument}
       />
 
       {/* ── Loop station ── */}
@@ -708,15 +711,13 @@ export default function App() {
         {showTuner && <div className="border-t border-border"><Tuner /></div>}
       </div>
 
-      {/* ── Jam Guide — bottom dock (Roadmap) ── */}
-      <JamGuide
-        detectedProgression={detectedProgression}
+      {/* ── Knowledge Center — bottom browse & study dock (L-40, D-40 §5) ── */}
+      <KnowledgeDock
         keyInfo={effectiveKey}
         chordHistory={chordHistory}
-        bpm={bpm}
         currentChord={currentChord}
-        onFocusChord={setJamFocusChord}
         onChordClick={setSelectedChord}
+        instrument={instrument}
       />
     </div>
   )

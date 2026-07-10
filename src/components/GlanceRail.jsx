@@ -17,11 +17,14 @@
 // (auto-follow must not feed the mic; every ▶ inside the gallery is a gesture).
 //
 // Space honesty (D-31 §3): cells are never shrunk below the D-30 sizes — the
-// rail scrolls horizontally with the expanded column auto-centred. Scrolling is
-// the piano rail's NORMAL state on most loops (a rootless 7th-chord gallery is
-// ~940px on its own). Narrow (<640px, D-31 §3): one thing per row — the current
-// station's full gallery (cells wrap), then a single "next" thumb; the Roadmap
-// above still shows the whole loop.
+// rail scrolls horizontally, USER-OWNED. The old auto-centre effect was deleted
+// in L-40 (D-40 §4/§6.1): the rail now lives in page flow (the Jam Guide band,
+// no 70vh scroller), where scrollIntoView's nearest scroller is the DOCUMENT —
+// every playhead advance would yank the whole page. Scrolling is the piano
+// rail's NORMAL state on most loops (a rootless 7th-chord gallery is ~940px on
+// its own). Narrow (<640px, D-31 §3): one thing per row — the current
+// station's full gallery (cells wrap), then a single "next" thumb; the loop
+// display up top (ProgressionBanner) still shows the whole loop.
 //
 // Pure presentational. Props (the D-31 §5 contract):
 //   stations    — [{ shape, voicing, rootPc, quality, label, rn }] canonical order
@@ -32,7 +35,6 @@
 //   instrument  — 'guitar' | 'piano' (VoicingBrowser `show`)
 //   keyRoot     — key tonic pitch class 0–11 (ChordDiagram fret placement)
 
-import { useEffect, useRef } from 'react'
 import ChordDiagram from './ChordDiagram'
 import MiniPiano from './MiniPiano'
 import VoicingBrowser from './VoicingBrowser'
@@ -48,23 +50,6 @@ export default function GlanceRail({
   // Narrow-viewport lookahead: the one collapsed thumb worth its pixels (§3).
   const followBase = activeIndex >= 0 ? activeIndex : 0
   const nextIndex = n > 1 ? (followBase + 1) % n : -1
-
-  // Auto-centre the expanded column as the accordion advances. Prop-driven —
-  // no rAF, nothing tied to the audio thread. Respect prefers-reduced-motion
-  // (D-31 §2.1): jump instead of smooth-scrolling.
-  const expandedRef = useRef(null)
-  useEffect(() => {
-    const el = expandedRef.current
-    if (!el) return
-    const reduceMotion =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
-    el.scrollIntoView({
-      behavior: reduceMotion ? 'auto' : 'smooth',
-      inline: 'center',
-      block: 'nearest',
-    })
-  }, [expandedIndex])
 
   if (n === 0) return null
 
@@ -99,7 +84,6 @@ export default function GlanceRail({
             return (
               <div
                 key={i}
-                ref={expandedRef}
                 role="listitem"
                 aria-current={isNow ? 'true' : undefined}
                 aria-label={`${st.label}${st.rn ? ` (${st.rn})` : ''} — every ${instrument} voicing`}

@@ -379,7 +379,10 @@ export function ExploreSection({ keyInfo, levels, onToggleLevel, onChordClick })
 // ─── Voicings section — picker (follows the live chord) → VoicingBrowser ─────
 // Props: keyInfo + chordHistory feed the quick-pick chips; currentChord re-aims
 // the picker whenever a new chord commits (manual picks hold until then).
-export function VoicingsSection({ keyInfo, chordHistory, currentChord }) {
+// `instrument` (L-40, D-40 §3) scopes the browser to App's global selector —
+// omitted (the orphaned standalone panel below) it falls back to 'both' via
+// VoicingBrowser's own `show` default.
+export function VoicingsSection({ keyInfo, chordHistory, currentChord, instrument }) {
   const [root, setRoot]       = useState('C')
   const [typeKey, setTypeKey] = useState('maj')
   const [active, setActive]   = useState('')
@@ -422,7 +425,7 @@ export function VoicingsSection({ keyInfo, chordHistory, currentChord }) {
         onTypeChange={k => { setTypeKey(k); setActive('') }}
       />
 
-      <VoicingBrowser rootPc={rootPc} quality={typeKey} />
+      <VoicingBrowser rootPc={rootPc} quality={typeKey} show={instrument} />
     </div>
   )
 }
