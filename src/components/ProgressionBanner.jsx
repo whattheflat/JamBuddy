@@ -11,8 +11,16 @@ import { findLoopPosition } from '../lib/match'
 // (p-4 → p-2, history pb-1 dropped) so the strip lands at ~76px.
 const HISTORY_SHOWN = 5
 
-export default function ProgressionBanner({ chordHistory, keyInfo, detectedProgression, onChordClick }) {
+export default function ProgressionBanner({ chordHistory, keyInfo, detectedProgression, seedInfo, onChordClick }) {
   const { root, mode, confidence } = keyInfo ?? {}
+
+  // Jam-roulette provenance (task L-60, jam-roulette.md §1.3): while a rolled
+  // loop is unconfirmed the loop row swaps its ♻ chrome for 🎲 + an amber chip
+  // naming the source; it flips back to normal the moment live detection
+  // confirms it (App clears seedInfo). The loop chips themselves are identical.
+  const seedBars = Array.isArray(seedInfo?.bars)
+    ? seedInfo.bars.reduce((a, b) => a + (b ?? 0), 0)
+    : null
 
   const visible = chordHistory.slice(-HISTORY_SHOWN)
   const current = visible[visible.length - 1]
@@ -93,7 +101,7 @@ export default function ProgressionBanner({ chordHistory, keyInfo, detectedProgr
         <>
           <div className="w-px h-6 bg-border shrink-0 self-center" />
           <div className="flex items-center gap-1.5 flex-wrap self-center">
-            <span className="text-xs text-gray-500">♻</span>
+            <span className="text-xs text-gray-500">{seedInfo ? '🎲' : '♻'}</span>
             {detectedProgression.map((chord, i) => {
               const isActive = i === loopPos
               const rn = root ? toRomanNumeral(chord, root, mode) : chord
@@ -114,7 +122,14 @@ export default function ProgressionBanner({ chordHistory, keyInfo, detectedProgr
                 </div>
               )
             })}
-            <span className="text-gray-600 text-xs">→ loop</span>
+            {seedInfo ? (
+              <span className="text-amber-400 text-xs">
+                rolled · {seedInfo.styleLabel} · {seedInfo.name}
+                {seedBars != null ? ` · ${seedBars} bars` : ''} — play it!
+              </span>
+            ) : (
+              <span className="text-gray-600 text-xs">→ loop</span>
+            )}
           </div>
         </>
       )}

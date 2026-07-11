@@ -14,6 +14,8 @@ import RelatedProgressions from './components/RelatedProgressions'
 import LoopStation from './components/LoopStation'
 import JamGuide, { KnowledgeDock } from './components/JamGuide'
 import { useLoopEngine } from './services/loopEngine'
+import kb from './data/kb/index.js'
+import { seedableLoop, buildRoulettePool } from './lib/match'
 import settingIcon from './assets/setting-icon.png'
 
 const DEFAULTS = {
@@ -152,6 +154,13 @@ export default function App() {
   const [detectedProgression, setDetectedProgression] = useState(null)
   const [selectedChord, setSelectedChord]             = useState(null)
 
+  // ── Jam Roulette (task L-60, jam-roulette.md) — pure UI/display state ─────────
+  // seedInfo: provenance of an unconfirmed rolled loop { styleLabel, name, bars }
+  // (null once live detection confirms or replaces it). Invariant (§3.5):
+  // seedInfo !== null  ⇔  progressionVoteRef.current?.seeded === true.
+  const [seedInfo, setSeedInfo]             = useState(null)
+  const [rouletteMenuOpen, setRouletteMenuOpen] = useState(false)
+
   // ── Top key candidates (shown as quick-lock chips) ────────────────────────────
   const [topKeyCandidates, setTopKeyCandidates] = useState([])
 
@@ -167,6 +176,13 @@ export default function App() {
   const progressionVoteRef   = useRef(null)
   const progressionMissRef   = useRef(0)
   const pendingKeyRef        = useRef(null)
+  // Roulette session memory (UI-state refs, never read by audio code): the last
+  // 6 rolled progression ids (no-repeat), the last rolled root pc (§2), and the
+  // last resolved style id (for the "Re-roll — {style}" row).
+  const rouletteMemoryRef    = useRef([])
+  const prevRootPcRef        = useRef(null)
+  const lastRolledStyleRef   = useRef(null)
+  const rouletteRef          = useRef(null)
 
   // Keep refs in sync
   useEffect(() => { effectiveKeyRef.current = effectiveKey }, [effectiveKey])
@@ -213,7 +229,11 @@ export default function App() {
     const vote = progressionVoteRef.current
     if (!detected) {
       progressionMissRef.current++
-      if (progressionMissRef.current >= NULL_CLEAR) {
+      // L-60 flag 1 (§3.4): a SEEDED card is an instruction, not an observation —
+      // ramp-up nulls (every seed's own effect run is miss 1, and no detection can
+      // land before commit 6) must NOT wipe it. It stays until confirmed, replaced
+      // by a consistently-detected different loop, re-rolled, or New Song.
+      if (progressionMissRef.current >= NULL_CLEAR && !vote?.seeded) {
         setDetectedProgression(null)
         progressionVoteRef.current = null
       }
@@ -227,6 +247,9 @@ export default function App() {
       setDetectedProgression(detected)
       vote.candidateKey = null
       vote.candidateCount = 0
+      // L-60 (§3.4): the seed is now a normal committed loop — the first agreeing
+      // live detection confirms it; drop the provenance flag + chip.
+      if (vote.seeded) { vote.seeded = false; setSeedInfo(null) }
       return
     }
 
@@ -234,11 +257,17 @@ export default function App() {
     if (vote && vote.candidateKey === key) {
       vote.candidateCount++
     } else {
-      progressionVoteRef.current = { committedKey, candidateKey: key, candidateCount: 1 }
+      // L-60 flag 3 (§3.4): preserve `seeded` across candidate rebuilds — a
+      // transient ghost sub-cycle must not strip the flag and resurrect flag 1's
+      // ramp-up kill through the side door.
+      progressionVoteRef.current = { committedKey, candidateKey: key, candidateCount: 1, seeded: vote?.seeded ?? false }
     }
     if (progressionVoteRef.current.candidateCount >= (committedKey ? REPLACE_VOTES : COMMIT_VOTES)) {
       setDetectedProgression(detected)
       progressionVoteRef.current = { committedKey: key, candidateKey: null, candidateCount: 0 }
+      // L-60 (§3.4/§3.5): a genuinely different loop replaced the seed — the new
+      // vote is detection-owned; end the seed provenance.
+      setSeedInfo(null)
     }
   }, [chordHistory])
 
@@ -261,6 +290,7 @@ export default function App() {
     effectiveKeyRef.current    = null
     setChordHistory([])
     setDetectedProgression(null)
+    setSeedInfo(null) // L-60 (§3.6): the seed clears with the full reset
     setTopKeyCandidates([])
     setBpm(null)
     setMicError(null)
@@ -289,6 +319,94 @@ export default function App() {
     setLockedKey(null)
     effectiveKeyRef.current = keyInfo
   }
+
+  // ── Jam Roulette (task L-60, jam-roulette.md §2/§3.1) ────────────────────────
+  // Rolls a random key + interesting KB progression and seeds the EXACT state
+  // live detection writes (lockedKey + detectedProgression + a committed-shape
+  // progressionVoteRef), so the whole dashboard populates as if detected. All
+  // randomness is here (plain Math.random, no audio contact); inputs = the KB
+  // registry only. `styleId === 'surprise'` picks uniformly over the 10 styles.
+  function rollJam(styleId) {
+    const pool = buildRoulettePool(kb) // lazy memo — round-trip passers, len 2–8
+    const sid = styleId === 'surprise'
+      ? Object.keys(kb)[Math.floor(Math.random() * Object.keys(kb).length)]
+      : styleId
+    const members = pool.byStyle.get(sid) ?? []
+    if (!members.length) return
+
+    // No-repeat memory (§2.2): exclude the last 6 rolled ids; if that empties the
+    // pool (small styles), fall back to excluding only the immediately previous.
+    const mem = rouletteMemoryRef.current
+    let candidates = members.filter(m => !mem.includes(m.id))
+    if (!candidates.length) {
+      const prev = mem[mem.length - 1]
+      candidates = members.filter(m => m.id !== prev)
+      if (!candidates.length) candidates = members
+    }
+
+    // Weighted draw: weight = levelW × lenW (§2.2). Intermediate leans in (×2),
+    // the collapsed "4-bar-ish" sweet spot 3–7 leans in (×2).
+    const weightOf = (m) => {
+      const levelW = m.progression.level === 'intermediate' ? 2 : 1
+      const lenW = (m.collapsedLen >= 3 && m.collapsedLen <= 7) ? 2 : 1
+      return levelW * lenW
+    }
+    const totalW = candidates.reduce((s, m) => s + weightOf(m), 0)
+    let r = Math.random() * totalW
+    let picked = candidates[candidates.length - 1]
+    for (const m of candidates) { r -= weightOf(m); if (r <= 0) { picked = m; break } }
+    const prog = picked.progression
+
+    // Root: uniform over 12 pcs, SHARP spelling (§2.1 — only sharp names
+    // string-match live detection); don't repeat the previous roll's root.
+    let rolledPc = Math.floor(Math.random() * 12)
+    if (prevRootPcRef.current != null && rolledPc === prevRootPcRef.current) {
+      rolledPc = Math.floor(Math.random() * 12) // re-draw once
+    }
+    const loop = seedableLoop(prog, rolledPc)
+    if (!loop) return // pool guarantees this, but stay defensive
+    prevRootPcRef.current = rolledPc
+
+    // ── The seed writes (§3.1) — clean slate, then key + loop + committed vote ──
+    newSong() // §3.6: roulette = New Song + seed (a stale window poisons handoff)
+    const info = { root: NOTES[rolledPc], mode: prog.mode, confidence: 1 }
+    setLockedKey(info)
+    effectiveKeyRef.current = info // the quickLock precedent — detection uses it NOW
+    chordVotesRef.current = []
+    setDetectedProgression(loop)
+    progressionVoteRef.current = {
+      committedKey: loop.join(','), // the committed shape, L-31's own key
+      candidateKey: null,
+      candidateCount: 0,
+      seeded: true, // the one flag L-60 adds (§3.4)
+    }
+    progressionMissRef.current = 0
+    setSeedInfo({ styleLabel: kb[sid]?.meta?.label ?? sid, name: prog.name, bars: prog.bars })
+
+    // Session bookkeeping (§2.2) — survives New Song deliberately.
+    lastRolledStyleRef.current = sid
+    mem.push(picked.id)
+    while (mem.length > 6) mem.shift()
+    setRouletteMenuOpen(false)
+  }
+
+  // Escape / click-outside closes the roulette menu; focus returns to the button.
+  useEffect(() => {
+    if (!rouletteMenuOpen) return
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        setRouletteMenuOpen(false)
+        rouletteRef.current?.querySelector('button')?.focus()
+      }
+    }
+    const onDown = (e) => { if (!rouletteRef.current?.contains(e.target)) setRouletteMenuOpen(false) }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDown)
+    }
+  }, [rouletteMenuOpen])
 
   // ── Waveform handler: feeds oscilloscope / drum view ─────────────────────────
   const handleWaveform = useCallback((data) => {
@@ -607,6 +725,62 @@ export default function App() {
           </div>
         )}
 
+        {/* ── Jam roulette (L-60, jam-roulette.md §1.1/§1.2) ── */}
+        <div className="relative ml-auto" ref={rouletteRef}>
+          <button
+            type="button"
+            onClick={() => setRouletteMenuOpen(o => !o)}
+            aria-haspopup="menu"
+            aria-expanded={rouletteMenuOpen}
+            aria-pressed={seedInfo ? true : undefined}
+            title="Jam roulette — roll a random key + progression to jam on"
+            className={`min-h-[32px] px-3 py-1 rounded-lg border text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+              seedInfo
+                ? 'border-accent/40 text-accent bg-accent/10 font-semibold'
+                : 'border-border text-gray-200 hover:border-gray-500'
+            }`}
+          >
+            🎲 Jam roulette
+          </button>
+          {rouletteMenuOpen && (
+            <div
+              role="menu"
+              aria-label="Pick a genre to roll"
+              className="absolute right-0 mt-1 w-56 bg-panel border border-border rounded-xl shadow-lg p-1 z-20"
+            >
+              {seedInfo && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => rollJam(lastRolledStyleRef.current)}
+                  className="w-full text-left px-3 py-1.5 rounded-lg text-sm text-gray-200 hover:bg-accent/10 border-b border-border outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  ⟳ Re-roll — {seedInfo.styleLabel}
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => rollJam('surprise')}
+                className="w-full text-left px-3 py-1.5 rounded-lg text-sm text-gray-200 hover:bg-accent/10 border-b border-border outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                ✨ Surprise me
+              </button>
+              {Object.entries(kb).map(([id, s]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => rollJam(id)}
+                  className="w-full text-left px-3 py-1.5 rounded-lg text-sm text-gray-200 hover:bg-accent/10 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  {s.meta?.label ?? id}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* ── Jam view toggle (L-50, one-screen.md §1.1) — layout-only ── */}
         <button
           type="button"
@@ -654,6 +828,7 @@ export default function App() {
         chordHistory={chordHistory}
         keyInfo={effectiveKey}
         detectedProgression={detectedProgression}
+        seedInfo={seedInfo}
         onChordClick={setSelectedChord}
       />
 
