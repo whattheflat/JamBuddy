@@ -1193,6 +1193,99 @@ if (existsSync(join(ROOT, 'src/components/PianoLickCard.jsx'))) {
   warn('PianoLickCard vocab drift guard', 'src/components/PianoLickCard.jsx not yet authored (D-60)')
 }
 
+// ─── 7d. Jam Roulette round-trip sweep (L-60, jam-roulette.md §2.2) ───────────
+//
+// The pool gate, protocol VERBATIM: for each of the 56 progressions, seed its
+// canonical collapsed form in C, fill a 32-commit window with repetitions and
+// truncate at EVERY partial-cycle offset (0…len−1); it passes iff
+// detectRepeatingProgression returns exactly that form at ALL offsets, AND the
+// collapsed length is 2–8. Steady-state-plus-all-offsets is the honest protocol
+// (a jam is sampled mid-cycle; a naive "2 clean cycles" feed evicts the 2-name
+// vamps and passes blues-8bar — §2.2). Expected: 52 passers, exactly 4 excluded
+// (jazz-blues, blues-quickchange, bossa-blue over-length; blues-8bar's
+// 1-of-7-offsets self-competition). Independent of match.roundTripPasses so a
+// detector or seed regression turns smoke red; cross-checked against it below.
+
+console.log('\nJam Roulette round-trip sweep (L-60):')
+
+const { seedableLoop, roundTripPasses, buildRoulettePool } = match
+
+// Verbatim §2.2 protocol — deliberately NOT calling match.roundTripPasses.
+function sweepPasses(form) {
+  if (!Array.isArray(form) || form.length < 2 || form.length > 8) return false
+  const target = form.join(',')
+  for (let offset = 0; offset < form.length; offset++) {
+    const history = []
+    for (let k = 0; k < 32; k++) history.push(form[(offset + k) % form.length])
+    const detected = detectRepeatingProgression(history)
+    if (!detected || detected.join(',') !== target) return false
+  }
+  return true
+}
+
+const sweepFails = []
+let sweepPool = 0
+let sweepTotal = 0
+for (const style of Object.keys(kb)) {
+  for (const prog of kb[style].progressions ?? []) {
+    sweepTotal++
+    const form = seedableLoop(prog, 0) // key C — key-independent (§3.3.3)
+    if (form && sweepPasses(form)) sweepPool++
+    else sweepFails.push(`${style}/${prog.id}`)
+  }
+}
+console.log(`  round-trip sweep: ${sweepFails.length} failures / pool ${sweepPool} (of ${sweepTotal})`)
+
+check('round-trip sweep: exactly 4 failures, pool 52 of 56 (§2.2 steady-state, all offsets)', () => {
+  assert(sweepTotal === 56, `swept ${sweepTotal} progressions, expected 56`)
+  assert(sweepPool === 52, `pool ${sweepPool} ≠ 52`)
+  assert(sweepFails.length === 4, `${sweepFails.length} failures ≠ 4: [${sweepFails.join(', ')}]`)
+})
+
+check('round-trip sweep: the 4 excluded are exactly jazz-blues, blues-quickchange, blues-8bar, bossa-blue', () => {
+  const want = ['blues/blues-8bar', 'blues/blues-quickchange', 'bossa/bossa-blue', 'jazz/jazz-blues']
+  assert(JSON.stringify([...sweepFails].sort()) === JSON.stringify(want),
+    `excluded set [${[...sweepFails].sort().join(', ')}] ≠ [${want.join(', ')}]`)
+})
+
+check('match.roundTripPasses agrees with the verbatim sweep on all 56 (drift guard)', () => {
+  for (const style of Object.keys(kb)) {
+    for (const prog of kb[style].progressions ?? []) {
+      const form = seedableLoop(prog, 0)
+      const mine = form ? sweepPasses(form) : false
+      const theirs = form ? roundTripPasses(form) : false
+      assert(mine === theirs, `${style}/${prog.id}: verbatim ${mine} ≠ match.roundTripPasses ${theirs}`)
+    }
+  }
+})
+
+check('buildRoulettePool exposes exactly the 52 passers, all collapsed len 2–8', () => {
+  const pool = buildRoulettePool(kb)
+  let n = 0
+  for (const [, members] of pool.byStyle) {
+    for (const mem of members) {
+      n++
+      assert(mem.collapsedLen >= 2 && mem.collapsedLen <= 8, `${mem.id} collapsedLen ${mem.collapsedLen} out of 2–8`)
+    }
+  }
+  assert(n === 52, `pool holds ${n} members ≠ 52`)
+})
+
+// Fix (a): a clean LIVE 12-bar commit stream now matches blues-12bar — the
+// pre-existing live-detection bug pinned fixed (jam-roulette.md §3.3.1). The live
+// commit stream is ALREADY collapsed (App.jsx dedupes back-to-back commits), so a
+// real 12-bar in G commits [G7,C7,G7,D7,C7,G7,D7] per chorus. Before fix (a) this
+// collapsed loop matched NOTHING → an empty JamGuide; now it detects + matches.
+check('fix (a) live: a clean collapsed 12-bar commit stream detects + matches blues-12bar (was an empty JamGuide)', () => {
+  const G12_COMMITS = ['G7', 'C7', 'G7', 'D7', 'C7', 'G7', 'D7'] // one chorus, as committed
+  const history = [].concat(...Array.from({ length: 5 }, () => G12_COMMITS)) // 5 choruses
+  const detected = detectRepeatingProgression(history)
+  assert(detected, 'detector returned null for a clean 12-bar commit stream')
+  const m = matchLoopToProgression(detected, index)
+  assert(m.matched && m.id === 'blues-12bar' && m.style === 'blues',
+    `detected ${JSON.stringify(detected)} matched ${m.matched ? m.style + '/' + m.id : 'NONE'}, expected blues/blues-12bar`)
+})
+
 // ─── 8. RelatedProgressions ranking pins (C-50) ───────────────────────────────
 //
 // Pins the L-51-gate-verified ranking outcomes of RelatedProgressions.jsx
@@ -1201,14 +1294,13 @@ if (existsSync(join(ROOT, 'src/components/PianoLickCard.jsx'))) {
 // reshuffles the top entries turns smoke red instead of silently changing what
 // jammers are recommended. Two live pins + one counterfactual:
 //
-//   (a) collapsed live 12-bar in A  → blues/blues-12bar top at score 152,
-//       annotation 'same changes'. Today matchLoopToProgression does NOT
-//       recognize the collapsed loop (the raw index is collapse-blind — the
-//       known D-62 fix (a) gap), so match.matched === false and blues-12bar
-//       itself ranks as a relative. ⚠ When D-62's collapsed-form indexing
-//       lands in match.js, the match flips to blues-12bar, the id-only
-//       exclusion removes it from entries, and these pins go red ON PURPOSE —
-//       re-pin deliberately then.
+//   (a) collapsed live 12-bar in A  → RE-PINNED for L-60 fix (a): the
+//       collapsed-form index now recognizes the loop as blues-12bar, which the
+//       id-only rule excludes from its own related list. The new top is
+//       blues/blues-8bar at score 92, annotation 'shares I7→V7' (0 shape + 40
+//       same-style + 36 transitions Δ{5,7,10} + 16 Jaccard·1.0 − 0 length);
+//       blues-quickchange edges just under at 90 (same terms, |7−9|=2 length
+//       penalty). This is the exact flip the pre-fix note here foretold.
 //   (b) live ii–V–I in C → match jazz/jazz-251-major (quality overlap wins
 //       over jazz-251-minor), which is EXCLUDED from entries; top entry is
 //       jazz/jazz-251-minor at 156 'same changes' (100 same canonical shape +
@@ -1219,8 +1311,10 @@ if (existsSync(join(ROOT, 'src/components/PianoLickCard.jsx'))) {
 //       degrees, scores 39 (36 transitions + 8 Jaccard·0.5 − 5 length, no
 //       +100) vs 152 with collapse — proving the mandatory collapse step is
 //       what makes the flagship "this 12-bar IS their 12-bar" relation fire.
-//       The replica-with-collapse must equal the live component score (152),
-//       grounding the replica so the 39 can't drift into fiction.
+//       Post fix (a) blues-12bar is the MATCH (excluded), so the live grounding
+//       moves to the actual top entry: the replica of blues-8bar (same-style
+//       relative) must equal its live component score (92), grounding the
+//       replica so the 39/152 can't drift into fiction.
 
 console.log('\nRelatedProgressions ranking pins (C-50):')
 
@@ -1253,15 +1347,23 @@ check('collapseChanges(blues-minor) pops the wrap-around pair → 5 units [0,5,0
 })
 
 const rank12 = rankRelatedProgressions(LOOP_12BAR_A)
-check('pin (a): collapsed 12-bar → matcher NONE today; blues-12bar top at exactly 152, "same changes"', () => {
+check('pin (a): collapsed 12-bar → matcher now recognizes blues-12bar (fix (a)); it self-excludes, blues-8bar tops at exactly 92, "shares I7→V7"', () => {
   assert(rank12, 'ranking returned null for a parseable loop')
-  assert(rank12.match.matched === false,
-    `match is ${rank12.match.id} — the raw loop index recognized a collapsed loop; D-62 fix (a) has landed: re-pin this section deliberately (blues-12bar now gets excluded by the id-only rule)`)
+  // Re-pinned for L-60 fix (a): the collapsed-form index makes the detected
+  // collapsed 12-bar match blues-12bar itself, which the id-only rule excludes
+  // from its own related list (§8's pre-fix note foretold exactly this flip).
+  assert(rank12.match.matched && rank12.match.id === 'blues-12bar',
+    `match is ${rank12.match.matched ? rank12.match.id : 'NONE'} — fix (a) should make the collapsed 12-bar match blues-12bar`)
+  assert(!rank12.entries.some((e) => e.id === 'blues-12bar'),
+    'blues-12bar leaked into its own related list — the id-only exclusion broke')
   const top = rank12.entries[0]
-  assert(top && top.id === 'blues-12bar' && top.style === 'blues',
-    `top entry is ${top?.style}/${top?.id}, expected blues/blues-12bar`)
-  assert(top.score === 152, `blues-12bar scored ${top.score}, pinned 152 (100 shape + 36 transitions + 16 Jaccard − 0 length)`)
-  assert(top.annotation === 'same changes', `annotation '${top.annotation}' ≠ 'same changes'`)
+  // blues-8bar: same style (+40) + all 3 loop transitions Δ{5,7,10} present (cap 36)
+  // + identical rebased degree-set {0,5,10} (Jaccard 1.0 ×16) − |7−7| length = 92.
+  // Edges blues-quickchange (90; same terms but |7−9|=2 length penalty).
+  assert(top && top.id === 'blues-8bar' && top.style === 'blues',
+    `top entry is ${top?.style}/${top?.id}, expected blues/blues-8bar`)
+  assert(top.score === 92, `blues-8bar scored ${top.score}, pinned 92 (0 shape + 40 style + 36 transitions + 16 Jaccard − 0 length)`)
+  assert(top.annotation === 'shares I7→V7', `annotation '${top.annotation}' ≠ 'shares I7→V7'`)
 })
 
 const rank251 = rankRelatedProgressions(LOOP_251_C)
@@ -1311,13 +1413,23 @@ function replicaScore(loop, prog, sameStyle, { collapse }) {
     - Math.abs(loop.length - units.length)
 }
 
-check('pin (c): no-collapse counterfactual — raw blues-12bar would score exactly 39 (replica grounded at 152 with collapse)', () => {
+check('pin (c): no-collapse counterfactual — raw blues-12bar would score exactly 39 vs 152 with collapse; replica grounded against the live top blues-8bar (92)', () => {
   const prog = kb.blues.progressions.find((p) => p.id === 'blues-12bar')
+  // The flagship "this 12-bar IS their 12-bar" relation: 152 with the mandatory
+  // collapse step, 39 without it — proving collapse is what fires the +100 shape
+  // term. blues-12bar is no longer a live *entry* post fix (a) (it's the match,
+  // excluded), so this is a pure-formula check of the replica, not read off the
+  // component. Both remain literal so a scoring-constant tweak turns smoke red.
   const withCollapse = replicaScore(LOOP_12BAR_A, prog, false, { collapse: true })
   assert(withCollapse === 152, `replica with collapse scored ${withCollapse} ≠ 152 — the replica drifted from the §5 formula; fix the replica (or the component changed: re-derive BOTH pins)`)
-  assert(rank12.entries[0].score === withCollapse, `replica (${withCollapse}) ≠ live component score (${rank12.entries[0].score}) — the grounding broke`)
   const noCollapse = replicaScore(LOOP_12BAR_A, prog, false, { collapse: false })
   assert(noCollapse === 39, `no-collapse counterfactual scored ${noCollapse} ≠ 39 (36 transitions + 8 half-Jaccard − 5 length) — the raw/collapsed relationship changed; re-derive the counterfactual`)
+  // Ground the replica against the LIVE component via the actual top entry
+  // (blues-8bar, same-style relative): the replica must reproduce its score.
+  const prog8 = kb.blues.progressions.find((p) => p.id === 'blues-8bar')
+  const w8 = replicaScore(LOOP_12BAR_A, prog8, true, { collapse: true })
+  assert(w8 === 92, `replica of blues-8bar scored ${w8} ≠ 92 — the replica drifted from the §5 formula`)
+  assert(rank12.entries[0].score === w8, `replica (${w8}) ≠ live component top score (${rank12.entries[0].score}) — the grounding broke`)
 })
 
 // ─── 9. Summary + exit code ───────────────────────────────────────────────────

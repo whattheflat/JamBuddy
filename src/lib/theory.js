@@ -576,7 +576,9 @@ function matchLoopOccurrence(win, start, cand) {
 
 // Returns the lexicographically smallest rotation so the same loop always
 // produces the same string regardless of where in the cycle we currently are.
-function canonicalize(pattern) {
+// Exported additively for match.js's seedableLoop / round-trip pool (task L-60,
+// jam-roulette.md §3.2) — the seed must canonicalize identically to detection.
+export function canonicalize(pattern) {
   let best = pattern
   for (let i = 1; i < pattern.length; i++) {
     const rot = [...pattern.slice(i), ...pattern.slice(0, i)]

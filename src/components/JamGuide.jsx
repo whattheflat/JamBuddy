@@ -281,6 +281,10 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
         quality: qualities[i] ?? 'maj',
         label: `${noteName}${suffix}`,
         rn: prog?.rn?.[i] ?? '',
+        // Fix (a) remap (jam-roulette.md §3.3.2): the RAW authored-play index this
+        // (possibly collapsed) station reads from. Raw matches have no sourceIndex
+        // → identity (i); collapsed matches carry the projection's map.
+        sourceIndex: prog?.sourceIndex?.[i] ?? i,
       }
     })
     if (instrument === 'guitar') {
@@ -288,7 +292,7 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
       const play = Array.isArray(plays) ? plays[0] : null
       const chords = play?.chords ?? []
       for (let i = 0; i < stations.length; i++) {
-        stations[i].shape = chords[i]?.shape ?? null
+        stations[i].shape = chords[stations[i].sourceIndex ?? i]?.shape ?? null
       }
     } else if (instrument === 'piano') {
       // Authored piano pack first (L-24): the matched style's first piano play
@@ -296,7 +300,7 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
       const pianoPlays = kb[match.style]?.instruments?.piano?.plays?.[prog?.id]
       const play = Array.isArray(pianoPlays) && pianoPlays.length ? pianoPlays[0] : null
       const authored = play
-        ? stations.map((st, i) => recipeVoicing(play.chords?.[i]?.recipe, st.rootPc, st.quality))
+        ? stations.map((st, i) => recipeVoicing(play.chords?.[st.sourceIndex ?? i]?.recipe, st.rootPc, st.quality))
         : null
       // Computed fallback — only built when needed (no pack, or a recipe that
       // failed to resolve). Identical to the pre-L-24 computed path.
@@ -408,7 +412,7 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
             ? `Heard ${detectedProgression.join(' → ')} — no ${activeStyle} pattern matched yet; following the chord as it commits.`
             : 'No repeating loop yet — following the chord as it commits.'}
         </p>
-        <VoicingBrowser rootPc={liveChord.rootPc} quality={liveChord.type} show={instrument} />
+        <VoicingBrowser rootPc={liveChord.rootPc} quality={liveChord.type} show={instrument} dense />
       </section>
     )
   ) : (
@@ -582,10 +586,10 @@ function BassGuideRows({ stations = [], activeIndex = -1, keyMode, live = false,
                       rootPc={st.rootPc}
                       quality={st.quality}
                       nextRootPc={stations[(i + 1) % n].rootPc}
-                      pattern={play?.chords?.[i]?.pattern}
+                      pattern={play?.chords?.[st.sourceIndex ?? i]?.pattern}
                       playLabel={play?.label}
                       feel={play?.feel}
-                      note={play?.chords?.[i]?.note}
+                      note={play?.chords?.[st.sourceIndex ?? i]?.note}
                       chordLabel={st.label}
                     />
                   ))}

@@ -506,8 +506,10 @@ flow below `xl` (JamGuide reorders its own children with responsive classes or
 conditional order — no duplicate mounts). The rail **unbounds** below `xl`
 (the max-h/overflow classes are `xl:`-prefixed) and lays out at natural height
 in page flow — a nested scroller inside a scrolling page is a trap on touch.
-Cell wrap at ~576px interior: guitar 5/line, piano two-octave cells alone —
-same behaviour the D-41 gate already verified for the band. The instrument
+Cell wrap at ~576px interior: guitar 5/line, piano cells **pair** (a 284px
+two-octave + a 160px one-octave = 452, or two two-octaves at the 576 boundary) —
+the same margin-hardened pairing D-51 verified for the bounded column (§4),
+with more room here, not the "cells ride alone" of the narrower bounded width. The instrument
 selector never moves: it lives in the controls bar, global, above everything
 at every width.
 
