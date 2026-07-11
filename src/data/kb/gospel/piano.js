@@ -287,4 +287,102 @@ export default {
     targetNotes:
       'Land 3rds on the strong beats, then double your line in 3rds or 6ths — the harmonized run is gospel\'s signature ornament, and on piano it is one hand-shape moved up the scale. Save the ♭3→3 crush for arrivals on the I, and when a walk-up is coming, aim your right-hand line at the same downbeat the bass is walking toward.',
   },
+
+  // Structured piano licks (SCHEMA.md "Piano licks", task P-61). Degree-based
+  // and key-agnostic: every deg resolves through the stated quality, approach
+  // pitches are derived from the next deg note. Realized offsets in the
+  // comments use a C-rooted chord for readability; every interval claim in
+  // notes/tips was recomputed from those offsets before writing (P-41 bar).
+  licks: [
+    {
+      // Over Cadd9: C4 D4 (E♭4)E4 G4 A4 C5 — offsets 0 2 [3]4 7 9 12: the
+      // hearandplay "gospel scale" (major pentatonic + ♭3) climbed straight
+      // up one octave, the ♭3 crushing a half-step into the 3rd.
+      id: 'gospel-scale-run',
+      name: 'Gospel-scale run (the ♭3→3 crush)',
+      level: 'foundation',
+      chordContext: 'over the Iadd9 — any major-tonic bar',
+      quality: 'add9',
+      techniques: ['grace-note'],
+      source: 'the pentatonic-♭3 "gospel scale" — hearandplay.com, "Gospel Piano Scales — 6 Different Scales That Can Work Now"',
+      notes: [
+        { deg: '1', beat: 1 },
+        { deg: '9', beat: 1.5 },
+        { deg: 'b3', beat: 2, technique: 'grace-note' },
+        { deg: '3', beat: 2 },
+        { deg: '5', beat: 2.5 },
+        { deg: '6', beat: 3 },
+        { deg: '1', octave: 1, beat: 3.5 },
+      ],
+      tips: 'Major pentatonic with one borrowed note: 1–2–♭3–3–5–6–1, the ♭3 crushed into the 3rd almost as one gesture — gospel\'s answer to the string bend, same move the blues makes but headed somewhere brighter. Run it up one octave and stop; the restraint is what keeps it church and not cocktail.',
+    },
+    {
+      // Over C7 (the V7 of an F shout vamp): G4 A4 C5 D5 E5 — offsets
+      // 7 9 12 14 16: 5–6–1–9–3 major pentatonic, straight-8th pickup on
+      // beats 3–4.5 landing the 3rd on beat 5 (the next downbeat).
+      id: 'gospel-shout-runup',
+      name: 'Shout run-up (pentatonic pickup)',
+      level: 'foundation',
+      chordContext: 'over the V7 — the run-up into a shout/praise-break downbeat',
+      quality: 'dom7',
+      techniques: [],
+      source: 'praise-break run-up vocabulary — the drive gear hearandplay teaches in GospelKeys 300 (praise songs & shouting music)',
+      notes: [
+        { deg: '5', beat: 3 },
+        { deg: '6', beat: 3.5 },
+        { deg: '1', octave: 1, beat: 4 },
+        { deg: '9', octave: 1, beat: 4.5 },
+        { deg: '3', octave: 1, beat: 5 },
+      ],
+      tips: 'A five-note ladder — 5, 6, root, 9, 3, all major pentatonic off the chord\'s root — thrown at the next bar\'s downbeat like a drummer\'s fill. The landing note is the 3rd, arriving exactly ON beat 1 with the band\'s next hit: in shout music the run exists to make the downbeat feel inevitable. Play it in octaves when the room gets loud.',
+    },
+    {
+      // Over Cmaj7, dyads struck together: C4+A4 → D4+B4 → E4+C5 → G4+E5 —
+      // offsets (0,9)(2,11)(4,12)(7,16). Every pair is a sixth (9,9,8,9
+      // semitones); bottom voice walks 1–2–3 then leaps a minor 3rd to 5,
+      // top sings 6–7–1 then leaps a major 3rd to the high 3. All eight
+      // notes diatonic to the root's major scale.
+      id: 'gospel-sixths-walkup',
+      name: 'Sixths walk-up (the harmonized choir line)',
+      level: 'intermediate',
+      chordContext: 'over the Imaj7, walking into the next downbeat',
+      quality: 'maj7',
+      techniques: ['double-stop'],
+      source: 'harmonizing the scale in 3rds and 6ths — hearandplay.com, "Harmonization Of The Major Scale Using Third And Sixth Intervals"',
+      notes: [
+        { deg: '1', beat: 2 },
+        { deg: '6', beat: 2, technique: 'double-stop' },
+        { deg: '9', beat: 3 },
+        { deg: '7', beat: 3, technique: 'double-stop' },
+        { deg: '3', beat: 4 },
+        { deg: '1', octave: 1, beat: 4, technique: 'double-stop' },
+        { deg: '5', beat: 5 },
+        { deg: '3', octave: 1, beat: 5, technique: 'double-stop' },
+      ],
+      tips: 'One singer with a shadow: the bottom voice walks 1–2–3 up the scale while the top sings 6–7–8 a sixth above, then both voices leap a third onto 5-under-3 for the arrival. Quarter notes, landing on the next bar\'s downbeat — it is the choir\'s soprano-alto pair under your right hand, and the 3rd on top of the last dyad is the note the pack keeps telling you to land on.',
+    },
+    {
+      // Over a °7 (C root): C4 E♭4 G♭4 A4 C5 E♭5 G♭5 A5 — offsets
+      // 0 3 6 9 12 15 18 21: pure stacked minor 3rds, two full octaves of
+      // the symmetric chord, rolled in 16ths across beats 1–2.75.
+      id: 'gospel-dim-roll',
+      name: 'Diminished roll (two octaves of the passing chord)',
+      level: 'intermediate',
+      chordContext: 'over the passing diminished bar — the ♯iv°7 or ♯i°7',
+      quality: 'dim7',
+      techniques: [],
+      source: 'rolling the passing °7 — learncolorpiano.com "Gospel Progression 1 | Diminished 7th Chords"; hearandplay.com diminished walk-ups/walk-downs lesson',
+      notes: [
+        { deg: '1', beat: 1 },
+        { deg: 'b3', beat: 1.25 },
+        { deg: 'b5', beat: 1.5 },
+        { deg: '6', beat: 1.75 },
+        { deg: '1', octave: 1, beat: 2 },
+        { deg: 'b3', octave: 1, beat: 2.25 },
+        { deg: 'b5', octave: 1, beat: 2.5 },
+        { deg: '6', octave: 1, beat: 2.75 },
+      ],
+      tips: 'The °7 is symmetric — minor thirds all the way up, the same four note names in every octave — so one four-note fingering (1-2-3-4, cross, repeat) sweeps two octaves without thinking. Roll it like a harp flourish inside the passing bar and let the last note hang: every tone of the chord sits a half-step or whole step from a tone of the chord you are walking into, so wherever you stop, the resolution is already prepared.',
+    },
+  ],
 }

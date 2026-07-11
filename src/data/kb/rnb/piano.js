@@ -273,4 +273,102 @@ export default {
     targetNotes:
       'Nines on the downbeats: most grips in this pack keep a 9 under your fingers, and landing on it — a whole step above each new root — is the fastest way to sound like the record. Approach chord tones from a half-step below (the single-note version of the slip), and when in doubt lay out for a bar: neo-soul solos breathe on the 16th grid they float over.',
   },
+
+  // Structured piano licks (SCHEMA.md "Piano licks", task P-61). Degree-based
+  // and key-agnostic: every deg resolves through the stated quality, approach
+  // pitches are derived from the next deg note. Realized offsets in the
+  // comments use a C-rooted chord for readability; every interval claim in
+  // notes/tips was recomputed from those offsets before writing (P-41 bar).
+  licks: [
+    {
+      // Over Cm7: D5 C5 B♭4 G4 E♭4 — offsets 14 12 10 7 3: the 9 held a
+      // beat and a half, sighing a whole step onto the octave root, then
+      // the m7 arpeggio falling away (root, ♭7, 5, ♭3) on dragged beats.
+      id: 'rnb-nine-sigh',
+      name: 'The nine sigh',
+      level: 'foundation',
+      chordContext: 'over the i7 — the m9 colour of a Dorian vamp',
+      quality: 'min7',
+      techniques: [],
+      source: 'the 9-over-minor colour neo-soul leads with — hearandplay.com "Neo Soul Chords: Exploring Extended Minor Chords"; pianowithjonny.com neo-soul lessons',
+      notes: [
+        { deg: '9', octave: 1, beat: 1 },
+        { deg: '1', octave: 1, beat: 2.5 },
+        { deg: '7', beat: 3 },
+        { deg: '5', beat: 3.5 },
+        { deg: '3', beat: 4.5 },
+      ],
+      tips: 'Start ON the 9 — the note this pack keeps under your fingers — hold it past the beat, then let it sigh a whole step onto the octave root and fall away down the chord: ♭7, 5th, ♭3. The beats are written lazy on purpose (the root lands on the and-of-2, the ♭3 limps in on the and-of-4): the sigh is a placement as much as a pitch.',
+    },
+    {
+      // Over Cm7, quartal dyads (each pair a perfect 4th, 5 semitones):
+      // brush (A4,D5)=(9,14) a half-step below, land (B♭4,E♭5)=(10,15),
+      // then plane down (G4,C5)=(7,12) and (F4,B♭4)=(5,10). Every note —
+      // grace pair included — sits in the root's Dorian scale.
+      id: 'rnb-quartal-slip',
+      name: 'Quartal slip (fourths on the drag)',
+      level: 'intermediate',
+      chordContext: 'over the i7 — verse texture on any m7 station',
+      quality: 'min7',
+      techniques: ['grace-note', 'double-stop'],
+      source: 'fourths as planeable neo-soul texture (the Glasper-school grip) — pianogroove.com "Quartal Comping Voicings for Jazz Piano"; the half-step slip per pianowithjonny.com "4 Steps to Play Neo Soul Chords on Piano"',
+      notes: [
+        { deg: '6', beat: 1, technique: 'grace-note' },
+        { deg: '9', octave: 1, beat: 1, technique: 'grace-note' },
+        { deg: '7', beat: 1 },
+        { deg: '3', octave: 1, beat: 1, technique: 'double-stop' },
+        { deg: '5', beat: 2.5 },
+        { deg: '1', octave: 1, beat: 2.5, technique: 'double-stop' },
+        { deg: '11', beat: 3.5 },
+        { deg: '7', beat: 3.5, technique: 'double-stop' },
+      ],
+      tips: 'One perfect fourth does the whole lick: brush it a half-step low (6 under 9 — both Dorian notes, so even the smear is in the scale) and land it on ♭7-under-♭3 at the beat, then drop the same two-finger grip a third onto 5-under-root, and a step onto 11-under-♭7. Ending on the 11 dyad resolves nothing, and that hovering non-arrival is exactly the verse texture the fourths exist for.',
+    },
+    {
+      // Over Cm7: C5 (B4) B♭4 (A♭4) G4 (E4) E♭4 — offsets 12 [11] 10 [8] 7
+      // [4] 3. Each bracketed pitch is derived (chrom-above of the next
+      // deg); the beat-notes alone spell the falling m7 arpeggio
+      // (root, ♭7, 5, ♭3), each one dragged into from a half-step above
+      // on the last 16th before the beat.
+      id: 'rnb-dilla-drop',
+      name: 'The Dilla drop (lazy chromatic fall)',
+      level: 'intermediate',
+      chordContext: 'over the i7, dragged behind the grid',
+      quality: 'min7',
+      techniques: [],
+      source: 'the behind-the-grid drag of the Dilla feel — brltheory.com on the Dilla time-feel; falling-chromatic voice motion per the musicradar.com D\'Angelo "Brown Sugar" breakdown',
+      notes: [
+        { deg: '1', octave: 1, beat: 1 },
+        { approach: 'chrom-above', beat: 1.75 },
+        { deg: '7', beat: 2 },
+        { approach: 'chrom-above', beat: 2.75 },
+        { deg: '5', beat: 3 },
+        { approach: 'chrom-above', beat: 3.75 },
+        { deg: '3', beat: 4 },
+      ],
+      tips: 'The skeleton is just the chord falling — octave root, ♭7, 5th, ♭3 on the beats — but every chord tone gets dragged into from the half-step above, placed on the last 16th before it lands. The first drag is the minor chord\'s natural 7, the last is the major 3rd — the same "wrong" upper neighbour the jazz enclosure uses — and neither sounds wrong at this tempo because each one falls immediately. Play it almost too late; the lean IS the lick.',
+    },
+    {
+      // Over Cmaj7: G4 A4 C5 D5 E5 D5 — offsets 7 9 12 14 16 14: the major
+      // pentatonic climbed to the 3rd (whole step, minor 3rd, whole step,
+      // whole step), then settling a whole step back onto the 9. Ghosts on
+      // the passing 6 and the first 9.
+      id: 'rnb-penta-turn',
+      name: 'Pentatonic turn onto the 9',
+      level: 'foundation',
+      chordContext: 'over the Imaj7 (or IVmaj7) of the maj7 vamp',
+      quality: 'maj7',
+      techniques: ['ghost-note'],
+      source: 'the major-pentatonic haze over lush maj7s — stock bedroom-R&B fill vocabulary; see pianowithjonny.com neo-soul piano lessons',
+      notes: [
+        { deg: '5', beat: 1 },
+        { deg: '6', beat: 1.5, technique: 'ghost-note' },
+        { deg: '1', octave: 1, beat: 2 },
+        { deg: '9', octave: 1, beat: 2.5, technique: 'ghost-note' },
+        { deg: '3', octave: 1, beat: 3 },
+        { deg: '9', octave: 1, beat: 4 },
+      ],
+      tips: 'Climb the major pentatonic — 5, 6, root, 9 — peak on the 3rd, then settle a whole step back onto the 9 and stay there: the resolution note is the colour note, which is the whole neo-soul bargain. The ghosted notes (the 6 and the first 9) should be felt more than heard — press them at half weight so the beat-notes ring and the in-betweens blur. Same six keys work over the IVmaj7 a bar later.',
+    },
+  ],
 }
