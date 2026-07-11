@@ -7,7 +7,32 @@ The shared queue all agents read and write. Lifecycle and rules: [`PROTOCOL.md`]
 
 ---
 
-## Active sprint: `sprint-integrated-glance` (branch: `sprint-jamguide-piano` — continued; commits extend PR #3)
+## Active sprint: `sprint-one-screen` (branch: `sprint-jamguide-piano` — continued; commits extend PR #3)
+
+**Goal (user directive 2026-07-11, after testing integrated-glance — "i like it a lot, so i would like to make some alterations"):**
+
+1. **The top block is too big** — "the chord view and the chord loop incl the instrument below is too big, it takes up too much space… this main view doesnt really add value." Compress the detection area and the instrument view.
+2. **Kill the big now-playing chord** — "seeing the big chord 'now playing' in big is also unnecessary as you already see that one in the chords (loop) part." The loop chips already carry it (playhead chip).
+3. **Rethink ProgressionSuggestions** — "the suggested progressions on the right are also almost useless… we need to rethink them in the form of SUGGESTED VOICINGS and the progressions we add relating to the loop." Replace the generic genre table with (a) the suggested-voicings rail and (b) KB-sourced progressions RELATED to the detected loop.
+4. **Voicings on the right** — "i'd like to have the suggested voicings on the right side of the screen (the jam guide)." The Jam Guide rail becomes a right column. (Overrides D-40's rejected side-by-side alternative — user directive wins.)
+5. **One screen** — "i wanna see the chords, the loop, the voicings, the progressions, the licks all on one screen, everything you need to follow the jam correctly."
+
+Standing principles (memory): scroll > click; nothing duplicated; one global instrument selector; playhead highlights, never hides. Weights: Muse 3, Luthier 3, Critic gate. No cron this sprint — Maestro drives on notifications. ⚠️ Spend-limit risk: the account limit was hit 2026-07-10; first dispatch is the probe.
+
+| id | title | domain | status | depends-on | files (lock) | definition of done |
+|----|-------|--------|--------|-----------|--------------|--------------------|
+| M-06 | Seed `sprint-one-screen` | maestro | done | — | `docs/agents/LEDGER.md` | seeded |
+| D-50 | One-screen dashboard concept doc: full-viewport grid at 1280×900 — LEFT: slim loop strip (banner without the big now-playing chord; playhead chip is the "now"), compact instrument view (decide the mechanism: height cap / reduced fret range / scale — honest about legibility), licks strip, related-progressions card; RIGHT column: the suggested-voicings rail (GlanceRail adapted to ~420-520px — decide cell strategy: recommended voicing prominent + gallery wrapped, sizes recomputed honestly per the D-40 corrected math); where LoopStation/collapsibles/KnowledgeDock land; what "related progressions" means computationally (KB-sourced: same style + level + degree-shape overlap with the loop — spec the ranking); narrow-viewport plan (columns stack); migration order with bounded L-50/D-51/L-51 scopes; ≥2 rejected alternatives. No user gate: pick strongest, record rationale | design | ready | — | `docs/design/one-screen.md` | every component named incl. what's removed (big chord display, ProgressionSuggestions); honest space math (everything visible at 1280×900 with at most the licks/progressions row below a fold-flick); bounded scopes |
+| L-50 | App restructure per D-50: grid columns, banner slimmed (big now-playing chord removed — ProgressionBanner edit), JamGuide rail moves to the right column, ProgressionSuggestions unmounted (file kept), instrument view compacted per doc, licks strip placed per doc. 🚨 App.jsx = layout/mounts/UI-state only, audio contract grep-gated | engineering | backlog | D-50 | `src/App.jsx`, `src/components/ProgressionBanner.jsx`, `src/components/JamGuide.jsx` (+ per doc — re-lock at promotion) | one-screen layout live; no duplicated info; build + smoke green; contract grep clean |
+| D-51 | Rail right-column adaptation per D-50: GlanceRail/VoicingBrowser sizing for the narrow column (recommended-first cell strategy per doc), playhead highlight preserved, wrap never horizontal-scroll | design | backlog | D-50, L-50 | `src/components/GlanceRail.jsx`, `src/components/VoicingBrowser.jsx` (+ per doc) | rail readable at column width for guitar/piano/bass; zero clicks; build + smoke green |
+| L-51 | RelatedProgressions component per D-50: KB-sourced, loop-relative (style + level + degree-shape overlap ranking per the doc's spec), replaces the old generic suggestions; mounts in the D-50 slot | engineering | backlog | D-50, L-50 | `src/components/RelatedProgressions.jsx` (new) + mount slot per doc | shows genuinely related KB progressions for a live loop; honest empty state; build + smoke green |
+| C-50 | Sprint-end sweep + PR #3 update per PROTOCOL §6 | quality | backlog | L-50, D-51, L-51 | (none — verification) | all green; PR updated |
+
+> Sequencing: D-50 first (everything hangs off it) → L-50 → D-51 ‖ L-51 (re-lock at promotion to enforce disjointness) → C-50. Critic gates every task.
+
+---
+
+## Shipped sprint: `sprint-integrated-glance` (branch: `sprint-jamguide-piano` — complete 2026-07-10, 4 iterations, PR #3 updated)
 
 **Goal (user directive 2026-07-10, after testing the glance-mode sprint — "its already a lot better, but"):**
 
