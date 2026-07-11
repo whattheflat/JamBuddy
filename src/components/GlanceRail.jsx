@@ -1,6 +1,17 @@
 // GlanceRail — ALL loop stations expanded, always (task D-41, per
 // docs/design/integrated-glance.md §4; supersedes the L-33 playhead accordion).
 //
+// D-51 (docs/design/one-screen.md §4/§6.2) adapts the rail to the dashboard's
+// 500px right column. Margin-hardening arithmetic, worst case = a classic
+// Windows scrollbar (~17px) inside the column's overflow-y-auto wrapper:
+//   row interior = 500 − 17 (scrollbar) − 18 (section border + p-2)
+//                − 14 (row border + p-1.5) = 451px
+//   guitar cell 89 (75 SVG + p-1.5 + border) → 4/line (374 ≤ 451; a 5th = 469 ✗)
+//   piano 1-octave 156.4 / 2-octave 279.6 → the mixed pair 279.6+6+156.4 = 442
+//   fits with ~9px margin even under the scrollbar (26px without) — the fit the
+//   doc calls fragile at the old paddings is now robust. Without the scrollbar
+//   the interior is 468px; every count above is unchanged.
+//
 // One VERTICAL ROW per loop station, canonical KB order (the same order the
 // banner's loop shows after rotation). Every row renders its full voicing
 // gallery PERMANENTLY — the playhead HIGHLIGHTS the active row (accent ring +
@@ -149,7 +160,7 @@ function StationRow({
         `${st.label}${st.rn ? ` (${st.rn})` : ''} — every ${instrument} voicing` +
         `${isNow ? ', now playing' : ''}${isNext ? ', up next' : ''}`
       }
-      className={`rounded-lg border p-2 ${stateClass}`}
+      className={`rounded-lg border p-1.5 ${stateClass}`}
       style={{ opacity: isNow || isFocused ? 1 : 0.85 }}
     >
       {/* ── Header line: identity + the folded roadmap education ── */}
@@ -190,11 +201,19 @@ function StationRow({
         <TransitionChip pair={rail} wraps={wraps} />
       </div>
 
-      {/* ── Gallery: own-voicing cell + the full dense browser; cells WRAP,
-             never scroll horizontally (D-40 §4). ── */}
-      <div className="flex flex-wrap items-start gap-2">
+      {/* ── Gallery: own-voicing cell FIRST (the recommended cell — full-accent
+             border reads as "the answer", one-screen.md §4; same size, no new
+             colour) + the full dense browser; cells WRAP, never scroll
+             horizontally (D-40 §4). Browser basis 320px: a guitar own-cell
+             (89px) still shares line one (89+6+320 = 415 ≤ 451) so the first
+             visual line shows play + 3 shapes = 4 across, while a piano
+             own-cell (≥156.4px) can never share it (156.4+6+320 = 482.4 > 468
+             even scrollbar-free) — the recommended voicing sits alone on line
+             one, prominence for free, and the gallery pairs at the FULL row
+             interior below it (the 279.6+156.4 mixed-pair fit needs all 451px). ── */}
+      <div className="flex flex-wrap items-start gap-1.5">
         {(ownGuitar || ownPiano) && (
-          <figure className="flex shrink-0 flex-col items-center gap-1.5 rounded-md border border-accent/60 bg-surface p-2">
+          <figure className="flex shrink-0 flex-col items-center gap-1.5 rounded-md border border-accent bg-surface p-1.5">
             <figcaption className="flex max-w-full items-center gap-1.5 text-[11px] font-medium leading-tight text-gray-300">
               {ownGuitar && (
                 <span className="rounded bg-accent px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-black">
@@ -210,7 +229,7 @@ function StationRow({
             )}
           </figure>
         )}
-        <div className="min-w-0 flex-1 basis-[300px]">
+        <div className="min-w-0 flex-1 basis-[320px]">
           {/* dense: the rail shows the mic-feedback microcopy once, below. */}
           <VoicingBrowser rootPc={st.rootPc} quality={st.quality} show={instrument} dense />
         </div>
@@ -243,7 +262,7 @@ export default function GlanceRail({
 
   return (
     <section
-      className="rounded-2xl border border-border bg-panel p-3"
+      className="rounded-2xl border border-border bg-panel p-2"
       aria-label="Voicing variations — every chord of the loop, all expanded"
     >
       <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">

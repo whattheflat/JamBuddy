@@ -46,8 +46,13 @@
 //             section chrome (border/panel background/heading — the row header
 //             already names the chord) and suppresses the per-mount
 //             mic-feedback microcopy (the rail shows it ONCE for the whole
-//             rail, D-31 §2.5). Every pre-existing mount renders identically
-//             with no prop.
+//             rail, D-31 §2.5). D-51 (one-screen.md §4) additionally tightens
+//             the DENSE cell spacing for the 500px right column — cell p-2 →
+//             p-1.5 and gallery gap-2 → gap-1.5 — which hardens the column's
+//             two-octave + one-octave piano pair fit (279.6 + 6 + 156.4 = 442
+//             ≤ 451px row interior even with a classic Windows scrollbar in
+//             the rail's scroller; it was 452 vs 456, a ~4px squeak, before).
+//             Every pre-existing mount renders identically with no prop.
 
 import { useEffect, useMemo, useRef } from 'react'
 import ChordDiagram from './ChordDiagram'
@@ -126,9 +131,11 @@ function SectionHeading({ children }) {
 // One gallery cell: label on top, diagram thumb, its own ▶ underneath.
 // bg-surface inside the bg-panel section gives the cells a quiet inlay border;
 // label is gray-300 on surface (AA comfortable at 11px semibold).
-function GalleryCell({ label, playLabel, onPlay, children }) {
+// `dense` (D-51): p-1.5 instead of p-2 — 4px off each cell's box width, part of
+// the right-column margin-hardening. Non-dense output is byte-identical.
+function GalleryCell({ label, playLabel, onPlay, dense = false, children }) {
   return (
-    <figure className="flex min-w-0 flex-col items-center gap-1.5 rounded-md border border-border bg-surface p-2">
+    <figure className={`flex min-w-0 flex-col items-center gap-1.5 rounded-md border border-border bg-surface ${dense ? 'p-1.5' : 'p-2'}`}>
       <figcaption
         className="max-w-full break-words text-center text-[11px] font-medium leading-tight text-gray-300"
         title={label}
@@ -228,7 +235,7 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
           <div
             role="group"
             aria-label={`${name} guitar shapes — every shape shown, each playable`}
-            className="flex flex-wrap items-stretch gap-2"
+            className={`flex flex-wrap items-stretch ${dense ? 'gap-1.5' : 'gap-2'}`}
           >
             {guitarShapes.map((shape, i) => (
               <GalleryCell
@@ -236,6 +243,7 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
                 label={shape.label}
                 playLabel={`Play ${name} — ${shape.label} guitar voicing`}
                 onPlay={() => playGuitar(shape)}
+                dense={dense}
               >
                 <ChordDiagram shape={shape} rootPc={pc} size="thumb" />
               </GalleryCell>
@@ -260,7 +268,7 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
         <div
           role="group"
           aria-label={`${name} piano voicings — every style shown, each playable`}
-          className="flex flex-wrap items-stretch gap-2"
+          className={`flex flex-wrap items-stretch ${dense ? 'gap-1.5' : 'gap-2'}`}
         >
           {/* pianoVoicing() output carries no rootPc, and without it VoicingPiano
               falls back to the LOWEST voice for its "R" badge — wrong for rootless
@@ -271,6 +279,7 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
               label={voicing.label}
               playLabel={`Play ${name} — ${voicing.label} piano voicing`}
               onPlay={() => playPiano(voicing)}
+              dense={dense}
             >
               <MiniPiano voicing={{ ...voicing, rootPc: pc }} size="thumb" />
             </GalleryCell>
