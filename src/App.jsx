@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import AudioCapture from './components/AudioCapture'
 import ProgressionBanner from './components/ProgressionBanner'
-import ProgressionSuggestions from './components/ProgressionSuggestions'
 import Fretboard from './components/Fretboard'
 import BassFretboard from './components/BassFretboard'
 import Tuner from './components/Tuner'
@@ -59,6 +58,36 @@ export default function App() {
   const [showDebug, setShowDebug]       = useState(false)
   const [showDrumView, setShowDrumView] = useState(false)
   const [monoColor, setMonoColor]   = useState(() => loadStored('wtf_monoColor', false))
+
+  // ── Jam view (task L-50, one-screen.md §1.1) — pure UI/layout state ──────────
+  // Layer 1: CSS lock — at xl the page root becomes h-screen overflow-hidden and
+  // everything below the dashboard is unmounted. Layer 2: best-effort browser
+  // fullscreen (Promise-caught — a refusal leaves layer 1 fully working). The
+  // toggle never starts/stops listening and never touches audio state.
+  const [jamView, setJamView] = useState(false)
+
+  function enterJamView() {
+    setJamView(true)
+    document.documentElement.requestFullscreen?.()?.catch(() => {})
+  }
+  function exitJamView() {
+    setJamView(false)
+    if (document.fullscreenElement) document.exitFullscreen?.()?.catch(() => {})
+  }
+
+  // Escape and the native fullscreen exit (any means) both restore normal flow —
+  // one state, never half-exited. Listeners active only while jamView.
+  useEffect(() => {
+    if (!jamView) return
+    const onKey = (e) => { if (e.key === 'Escape') exitJamView() }
+    const onFsChange = () => { if (!document.fullscreenElement) setJamView(false) }
+    window.addEventListener('keydown', onKey)
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.removeEventListener('fullscreenchange', onFsChange)
+    }
+  }, [jamView])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Jam Guide → Fretboard cross-link (D-03) ──────────────────────────────────
   // When a Roadmap station is tapped, JamGuide reports its {rootPc, quality}
@@ -436,7 +465,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-surface text-white p-3">
+    <div className={`min-h-screen bg-surface text-white p-3${jamView ? ' xl:h-screen xl:overflow-hidden xl:flex xl:flex-col' : ''}`}>
 
       {/* ── Header ── */}
       <header className="mb-2 flex items-center justify-between">
@@ -576,6 +605,21 @@ export default function App() {
             </button>
           </div>
         )}
+
+        {/* ── Jam view toggle (L-50, one-screen.md §1.1) — layout-only ── */}
+        <button
+          type="button"
+          onClick={jamView ? exitJamView : enterJamView}
+          aria-pressed={jamView}
+          title={jamView ? 'Exit jam view' : 'Jam view — the one-screen dashboard, fullscreen'}
+          className={`ml-auto min-h-[32px] px-3 py-1 rounded-lg text-sm border transition-all outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+            jamView
+              ? 'bg-accent/20 border-accent text-accent font-semibold'
+              : 'border-border text-gray-400 hover:border-gray-500 hover:text-gray-200'
+          }`}
+        >
+          {jamView ? '✕ Exit' : '⛶ Jam view'}
+        </button>
       </div>
 
       <AudioCapture
@@ -613,25 +657,13 @@ export default function App() {
         onChordClick={setSelectedChord}
       />
 
-      {/* ── Instrument + progressions row ── */}
-      <div className="flex gap-3 mb-3 items-stretch">
-        <div className="w-full lg:w-[70%] min-w-0">
-          {instrument === 'guitar' && <Fretboard keyInfo={effectiveKey} currentChord={currentChord} pentatonicOnly={false} monoColor={monoColor} jamFocusChord={jamFocusChord} />}
-          {instrument === 'bass'   && <BassFretboard keyInfo={effectiveKey} currentChord={currentChord} monoColor={monoColor} />}
-          {instrument === 'piano'  && <Piano keyInfo={effectiveKey} currentChord={currentChord} monoColor={monoColor} />}
-        </div>
-
-        <div className="hidden lg:block w-[30%] min-w-0 relative">
-          <div className="absolute inset-0">
-            <ProgressionSuggestions keyInfo={effectiveKey} currentChord={currentChord} />
-          </div>
-        </div>
-      </div>
-
-
-      {/* ── Jam Guide band — always open, right below the instrument row (L-40,
-          D-40 §1: CurrentJamPanel's old slot; the loop shows ONCE, in the
-          banner above). Follows the one global instrument selector. ── */}
+      {/* ── The jam dashboard grid (task L-50, one-screen.md §1/§6): JamGuide
+          owns the two-column layout — LEFT: compact instrument view (chosen
+          here, passed as the mainView slot) + licks strip + the related-
+          progressions slot (null until L-51); RIGHT: the suggested-voicings
+          rail. ProgressionSuggestions is unmounted (file kept) — its job
+          split into the rail + RelatedProgressions per the user directive.
+          Follows the one global instrument selector. ── */}
       <JamGuide
         detectedProgression={detectedProgression}
         keyInfo={effectiveKey}
@@ -639,8 +671,23 @@ export default function App() {
         currentChord={currentChord}
         onFocusChord={setJamFocusChord}
         instrument={instrument}
+        mainView={
+          <>
+            {instrument === 'guitar' && <Fretboard keyInfo={effectiveKey} currentChord={currentChord} pentatonicOnly={false} monoColor={monoColor} jamFocusChord={jamFocusChord} compact />}
+            {instrument === 'bass'   && <BassFretboard keyInfo={effectiveKey} currentChord={currentChord} monoColor={monoColor} compact />}
+            {instrument === 'piano'  && <Piano keyInfo={effectiveKey} currentChord={currentChord} monoColor={monoColor} compact />}
+          </>
+        }
+        relatedSlot={null}
+        fill={jamView}
       />
 
+      {/* ── Below the dashboard — the learning / behind-the-scenes area (page
+          scroll in normal mode; UNMOUNTED in jam view, one-screen.md §1.1/§3:
+          conditional mount, not `hidden`, so collapsed chrome can't leak
+          height). ── */}
+      {!jamView && (
+      <>
       {/* ── Loop station ── */}
       <LoopStation
         slots={slots}
@@ -719,6 +766,8 @@ export default function App() {
         onChordClick={setSelectedChord}
         instrument={instrument}
       />
+      </>
+      )}
     </div>
   )
 }

@@ -10,17 +10,24 @@ import { ExploreSection, VoicingsSection, LevelChips } from './ExplorePanel'
 import { pianoVoicingChain } from '../lib/piano'
 import { parseChord } from '../lib/voicings'
 
-// ─── JamGuide.jsx — the jam BAND + the Knowledge Center DOCK ─────────────────
+// ─── JamGuide.jsx — the jam-grid OWNER + the Knowledge Center DOCK ───────────
 //
-// Task L-40 (per docs/design/integrated-glance.md §5–§6.1) split the old
-// four-section bottom dock in two:
+// Task L-50 (per docs/design/one-screen.md §6) promoted the default export from
+// "band" to the two-column jam dashboard grid:
 //
-//   default export `JamGuide`  — the always-open, zero-chrome jam band, mounted
-//     by App directly below the instrument row (CurrentJamPanel's old slot).
-//     Body: GlanceRail voicings + LicksStrip for the matched loop; heard-live
-//     single gallery when no loop is matched; a slim one-line hint when nothing
-//     is heard. The loop itself renders ONCE, in ProgressionBanner (D-40 §2) —
-//     RoadmapTrack is unmounted (file retired in place, deletion backlogged).
+//   default export `JamGuide`  — renders the xl: two-column flex region.
+//     LEFT (flex-1): the `mainView` slot (App keeps choosing Fretboard /
+//     BassFretboard / Piano — JamGuide never imports them), the LicksStrip,
+//     and the `relatedSlot` (RelatedProgressions, mounted by App — null until
+//     L-51). RIGHT (500px): the suggested-voicings rail — GlanceRail /
+//     BassGuideRows / the heard-live fallback — inside the design's ONE
+//     justified internal scroller (height-bounded, NOT sticky, §1). Below xl
+//     the columns stack in jam-following order via display:contents + order
+//     classes: mainView → rail → licks → related (§7; rail unbounds).
+//     The `fill` prop (jam view, §1.1) swaps the rail's viewport-calc bound
+//     for h-full and makes the left column a flex stack whose related slot
+//     absorbs the remainder. The loop itself renders ONCE, in
+//     ProgressionBanner (D-40 §2).
 //   named export `KnowledgeDock` — the bottom collapsible browse/study area:
 //     Explore / Voicings / Licks & Techniques + the shared level filter (the
 //     old dock minus its jam section, which IS the band now).
@@ -149,7 +156,7 @@ function lickFitsContext(lick, context) {
   return wanted.length > 0 && tokens.some(t => wanted.includes(t))
 }
 
-// ─── JamGuide — the always-open jam band (default export) ─────────────────────
+// ─── JamGuide — the jam dashboard grid (default export) ───────────────────────
 //
 // Props:
 //   detectedProgression : string[] | null  — the live detected loop (chord names)
@@ -158,12 +165,16 @@ function lickFitsContext(lick, context) {
 //   currentChord        : string | undefined — most recent committed chord
 //   onFocusChord        : fn({rootPc,quality}|null) — Fretboard guide-tone link (D-03)
 //   instrument          : 'guitar' | 'piano' | 'bass' — App's global selector
+//   mainView            : JSX slot — the compact instrument view (App-chosen; L-50)
+//   relatedSlot         : JSX slot — RelatedProgressions (App-mounted; null until L-51)
+//   fill                : boolean — jam view (one-screen.md §1.1): the grid fills
+//                         App's h-screen column; rail bound becomes h-full
 
 // The band shows ALL levels — a glance surface filters nothing (D-40 §5); the
 // level filter lives in the KnowledgeDock only.
 const ALL_LEVELS = { foundation: true, intermediate: true }
 
-export default function JamGuide({ detectedProgression, keyInfo, chordHistory = [], currentChord, onFocusChord, instrument = 'guitar' }) {
+export default function JamGuide({ detectedProgression, keyInfo, chordHistory = [], currentChord, onFocusChord, instrument = 'guitar', mainView = null, relatedSlot = null, fill = false }) {
   // Style labels straight from the KB registry, via each style's meta.
   const styles = useMemo(
     () => Object.entries(kb).map(([id, style]) => ({ id, label: style?.meta?.label ?? id })),
@@ -343,96 +354,140 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
   // re-sorting with the jam (D-31 §2.4).
   const contextStation = stationVoicings[canonicalPos >= 0 ? canonicalPos : 0] ?? null
 
-  return (
-    <section className="mb-3" aria-label="Jam Guide — follows the loop">
-
-      {/* ── Micro-header — a line, not a button (D-40 §1: zero chrome) ── */}
-      <h3 className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
-        Jam Guide — {headerLabel}
-        {match.matched && keyInfo?.root ? ` · in ${keyInfo.root} ${keyInfo.mode}` : ''}
-      </h3>
-
-      {match.matched ? (
-        instrument === 'bass' ? (
-          /* Bass rows (D-40 §3): authored pattern cards when the matched style
-             ships a bass pack (L-42), computed roots/fifths/approaches as the
-             honest fallback otherwise. The licks strip hides either way
-             (guitar tab licks are noise to a bassist mid-jam). */
-          <BassGuideRows
-            stations={stationVoicings}
-            activeIndex={canonicalPos}
-            keyMode={keyInfo?.mode}
-            plays={bassPlays}
-          />
-        ) : (
-        <div className="flex flex-col gap-3">
-          {/* The voicing rail — ALL stations expanded as vertical rows; the
-              playhead only highlights (D-41, D-40 §4). */}
-          <GlanceRail
-            stations={stationVoicings}
-            activeIndex={canonicalPos}
-            focusedIndex={focusedStation}
-            onFocus={setFocusedStation}
-            instrument={instrument}
-            keyRoot={keyRoot}
-            keyMode={keyInfo?.mode}
-          />
-          <LicksStrip
-            styleId={activeStyle}
-            levels={ALL_LEVELS}
-            instrument={instrument}
-            context={contextStation}
-          />
-        </div>
-        )
-      ) : liveChord ? (
-        /* No loop matched, but chords are committing (D-31 §2.3): a single
-           "heard live" gallery, re-aimed on every chord commit. Auto-follow
-           only — nothing plays by itself. Bass: D-40 §3's prose forbids guitar/
-           piano galleries under BASS, so the live chord gets the same computed
-           root/fifth line (no next chord → no approach) instead. */
-        instrument === 'bass' ? (
-          <BassGuideRows
-            stations={[{ rootPc: liveChord.rootPc, quality: liveChord.type, label: currentChord, rn: '' }]}
-            activeIndex={0}
-            keyMode={keyInfo?.mode}
-            live
-          />
-        ) : (
-        <div className="flex flex-col gap-3">
-          <section
-            className="rounded-2xl border border-border bg-panel p-3"
-            aria-label={`Heard live — every ${instrument} voicing of ${currentChord}`}
-          >
-            <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
-              Heard live · {currentChord} — every voicing
-            </h4>
-            <p className="mb-2 text-[11px] text-gray-500">
-              {detectedProgression?.length
-                ? `Heard ${detectedProgression.join(' → ')} — no ${activeStyle} pattern matched yet; following the chord as it commits.`
-                : 'No repeating loop yet — following the chord as it commits.'}
-            </p>
-            <VoicingBrowser rootPc={liveChord.rootPc} quality={liveChord.type} show={instrument} />
-          </section>
-          {/* No station rn without a loop — context sort falls back to the
-              live chord's quality key (e.g. a "dom7" lick fits a live G7). */}
-          <LicksStrip
-            styleId={activeStyle}
-            levels={ALL_LEVELS}
-            instrument={instrument}
-            context={{ rn: '', quality: liveChord.type, label: currentChord }}
-          />
-        </div>
-        )
-      ) : (
-        /* Nothing heard yet — one slim line (~40px, D-40 §1): the idle band
-           must not waste main-module space. */
-        <p className="rounded-xl border border-dashed border-border px-3 py-2 text-xs text-gray-500">
+  // ── The rail (right column at xl / second block stacked): the suggested-
+  // voicings surface — GlanceRail, BassGuideRows, the heard-live gallery, or
+  // the honest idle line (one-screen.md §3, §4). ──
+  const railContent = match.matched ? (
+    instrument === 'bass' ? (
+      /* Bass rows (D-40 §3): authored pattern cards when the matched style
+         ships a bass pack (L-42), computed roots/fifths/approaches as the
+         honest fallback otherwise. The licks strip hides either way
+         (guitar tab licks are noise to a bassist mid-jam). */
+      <BassGuideRows
+        stations={stationVoicings}
+        activeIndex={canonicalPos}
+        keyMode={keyInfo?.mode}
+        plays={bassPlays}
+      />
+    ) : (
+      /* The voicing rail — ALL stations expanded as vertical rows; the
+         playhead only highlights (D-41, D-40 §4). */
+      <GlanceRail
+        stations={stationVoicings}
+        activeIndex={canonicalPos}
+        focusedIndex={focusedStation}
+        onFocus={setFocusedStation}
+        instrument={instrument}
+        keyRoot={keyRoot}
+        keyMode={keyInfo?.mode}
+      />
+    )
+  ) : liveChord ? (
+    /* No loop matched, but chords are committing (D-31 §2.3): a single
+       "heard live" gallery, re-aimed on every chord commit. Auto-follow
+       only — nothing plays by itself. Bass: D-40 §3's prose forbids guitar/
+       piano galleries under BASS, so the live chord gets the same computed
+       root/fifth line (no next chord → no approach) instead. */
+    instrument === 'bass' ? (
+      <BassGuideRows
+        stations={[{ rootPc: liveChord.rootPc, quality: liveChord.type, label: currentChord, rn: '' }]}
+        activeIndex={0}
+        keyMode={keyInfo?.mode}
+        live
+      />
+    ) : (
+      <section
+        className="rounded-2xl border border-border bg-panel p-3"
+        aria-label={`Heard live — every ${instrument} voicing of ${currentChord}`}
+      >
+        <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+          Heard live · {currentChord} — every voicing
+        </h4>
+        <p className="mb-2 text-[11px] text-gray-500">
           {detectedProgression?.length
-            ? `Heard ${detectedProgression.join(' → ')} — no ${activeStyle} pattern matched yet; voicings follow the next chord that commits.`
-            : 'Play a few bars — voicings and licks for your loop land here.'}
+            ? `Heard ${detectedProgression.join(' → ')} — no ${activeStyle} pattern matched yet; following the chord as it commits.`
+            : 'No repeating loop yet — following the chord as it commits.'}
         </p>
-      )}
+        <VoicingBrowser rootPc={liveChord.rootPc} quality={liveChord.type} show={instrument} />
+      </section>
+    )
+  ) : (
+    /* Nothing heard yet — one slim line (~40px): the idle rail must not
+       waste dashboard space. */
+    <p className="rounded-xl border border-dashed border-border px-3 py-2 text-xs text-gray-500">
+      {detectedProgression?.length
+        ? `Heard ${detectedProgression.join(' → ')} — no ${activeStyle} pattern matched yet; voicings follow the next chord that commits.`
+        : 'Play a few bars — voicings and licks for your loop land here.'}
+    </p>
+  )
+
+  // ── The licks strip (left column). Matched loops sort by the playhead
+  // station; heard-live falls back to the live chord's quality key (e.g. a
+  // "dom7" lick fits a live G7). Bass hides it (guitar tab licks are noise
+  // to a bassist mid-jam); LicksStrip also hides itself when empty. ──
+  const licksStrip = instrument !== 'bass' && match.matched ? (
+    <LicksStrip
+      styleId={activeStyle}
+      levels={ALL_LEVELS}
+      instrument={instrument}
+      context={contextStation}
+    />
+  ) : instrument !== 'bass' && liveChord ? (
+    <LicksStrip
+      styleId={activeStyle}
+      levels={ALL_LEVELS}
+      instrument={instrument}
+      context={{ rn: '', quality: liveChord.type, label: currentChord }}
+    />
+  ) : null
+
+  // ── The grid (one-screen.md §1, §6): left flex-1 / right 500px at xl;
+  // stacked below xl in jam-following order (mainView → rail → licks →
+  // related) via display:contents on the left wrapper + order classes — one
+  // mount per surface, no duplicates (§7). The rail wrapper is the design's
+  // ONE justified internal scroller: height-bounded in normal mode, h-full
+  // in jam view (`fill`), NOT sticky (§1). ──
+  return (
+    <section
+      className={
+        'mb-3 flex flex-col gap-3 xl:flex-row' +
+        (fill ? ' xl:mb-0 xl:flex-1 xl:min-h-0' : ' xl:items-start')
+      }
+      aria-label="Jam Guide — follows the loop"
+    >
+      {/* LEFT — instrument view · licks · related progressions */}
+      <div className={'contents xl:flex xl:flex-col xl:gap-3 xl:flex-1 xl:min-w-0' + (fill ? ' xl:min-h-0' : '')}>
+        {mainView != null && (
+          <div className={'order-1 xl:order-none min-w-0' + (fill ? ' xl:shrink-0' : '')}>
+            {mainView}
+          </div>
+        )}
+        {licksStrip != null && (
+          <div className={'order-3 xl:order-none min-w-0' + (fill ? ' xl:shrink-0' : '')}>
+            {licksStrip}
+          </div>
+        )}
+        {relatedSlot != null && (
+          <div className={'order-4 xl:order-none min-w-0' + (fill ? ' xl:flex-1 xl:min-h-0 xl:overflow-y-auto' : '')}>
+            {relatedSlot}
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT — the suggested-voicings rail (the one contained scroller) */}
+      <div
+        className={
+          'order-2 xl:order-none min-w-0 xl:w-[500px] xl:shrink-0 xl:overflow-y-auto ' +
+          (fill ? 'xl:h-full' : 'xl:max-h-[calc(100vh_-_1.5rem)]')
+        }
+      >
+        {/* Micro-header — a line, not a button (D-40 §1: zero chrome) */}
+        <h3 className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+          Suggested voicings — {headerLabel}
+          {match.matched && keyInfo?.root ? ` · in ${keyInfo.root} ${keyInfo.mode}` : ''}
+        </h3>
+        {railContent}
+      </div>
     </section>
   )
 }
