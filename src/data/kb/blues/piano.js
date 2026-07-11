@@ -292,4 +292,102 @@ export default {
     targetNotes:
       'Land the 3rd of each chord on the downbeat of the change — bars 5, 9 and 10 are the exam. Treat the two blue notes as a budget with a schedule: the key\'s ♭3 crushes into 3 over the I and sits still as the ♭7 over the IV; the key\'s ♭7 is home over the I and becomes the ♯9 the moment the V arrives. Between phrases, silence — a blues chorus is a conversation, and the piano already talked.',
   },
+
+  // Structured piano licks (SCHEMA.md "Piano licks", task P-60). Degree-based
+  // and key-agnostic: every deg resolves through the stated quality (all four
+  // licks sit on dominant stations — the blues' native chord; the pentatonic
+  // fall's tip notes where it survives the minor form too). Realized offsets
+  // in the comments use a C-rooted chord; every interval claim in notes/tips
+  // was recomputed from those offsets before writing (P-41 bar).
+  licks: [
+    {
+      // Over C7: (E♭4)E4 G4 C5 B♭4 G4 (E♭4)E4 — offsets [3]4 7 12 10 7 [3]4.
+      // Both crushes are the ♭3 (3) into the 3rd (4), same beat.
+      id: 'blues-b3-crush',
+      name: 'The ♭3 crush',
+      level: 'foundation',
+      chordContext: 'over the I7',
+      quality: 'dom7',
+      techniques: ['grace-note'],
+      source: 'the ♭3→3 crush as the pianist\'s string bend — piano-ology "Killer Blues Piano Grace Notes"',
+      notes: [
+        { deg: 'b3', beat: 1, technique: 'grace-note' },
+        { deg: '3', beat: 1 },
+        { deg: '5', beat: 1.5 },
+        { deg: '1', octave: 1, beat: 2 },
+        { deg: '7', beat: 2.5 },
+        { deg: '5', beat: 3 },
+        { deg: 'b3', beat: 3.5, technique: 'grace-note' },
+        { deg: '3', beat: 3.5 },
+      ],
+      tips: 'Strings bend; the piano crushes. Flick the ♭3 into the 3rd almost as one gesture, walk straight up the chord (3, 5, octave root), answer back down (♭7, 5), and close with the same crush that opened the phrase — one blue note, spent twice.',
+    },
+    {
+      // Over C7: C5 B♭4 G4 F4 E♭4 C4 — offsets 12 10 7 5 3 0: the full
+      // minor pentatonic (1 ♭7 5 4 ♭3 1) falling top to bottom on the
+      // triplet grid, landing the low root on beat 3.
+      id: 'blues-penta-fall-turnaround',
+      name: 'Pentatonic fall (turnaround run)',
+      level: 'foundation',
+      chordContext: 'bar 11, over the I7, setting up the turnaround',
+      quality: 'dom7',
+      techniques: [],
+      source: 'the descending minor-pentatonic run every blues pianist keeps — stock vocabulary; see pianogroove.com\'s Chicago Blues course',
+      notes: [
+        { deg: '1', octave: 1, beat: 1 },
+        { deg: '7', beat: 1.33 },
+        { deg: '5', beat: 1.67 },
+        { deg: '11', beat: 2 },
+        { deg: 'b3', beat: 2.33 },
+        { deg: '1', beat: 3 },
+      ],
+      tips: 'Top to bottom of the minor pentatonic — root, ♭7, 5, 4, ♭3, root — in one triplet gesture, with a breath before the low root lands on beat 3 so the turnaround has somewhere to kick from. Over the I7 the run\'s ♭3 is the chord\'s ♯9 and the 4 passes between the 3rd and the 5th; the same six keys survive untouched over the i7 of a minor blues.',
+    },
+    {
+      // Over C7, high dyads: E5+G5 ×4 (offsets 16+19, a minor third apart)
+      // hammered on the triplet grid, then peeling down the chord:
+      // C5(12) B♭4(10) G4(7).
+      id: 'blues-spann-hammer-dyads',
+      name: 'Spann hammer dyads',
+      level: 'intermediate',
+      chordContext: 'over the I7 — the high fill that cuts through a Chicago band',
+      quality: 'dom7',
+      techniques: ['double-stop'],
+      source: 'in the Otis Spann lane — hammered right-hand triplet dyads, the postwar Chicago fill (Blues Hall of Fame)',
+      notes: [
+        { deg: '3', octave: 1, beat: 1 },
+        { deg: '5', octave: 1, beat: 1, technique: 'double-stop' },
+        { deg: '3', octave: 1, beat: 1.33 },
+        { deg: '5', octave: 1, beat: 1.33, technique: 'double-stop' },
+        { deg: '3', octave: 1, beat: 1.67 },
+        { deg: '5', octave: 1, beat: 1.67, technique: 'double-stop' },
+        { deg: '3', octave: 1, beat: 2 },
+        { deg: '5', octave: 1, beat: 2, technique: 'double-stop' },
+        { deg: '1', octave: 1, beat: 2.33 },
+        { deg: '7', beat: 2.67 },
+        { deg: '5', beat: 3 },
+      ],
+      tips: 'One dyad — the 3rd with the 5th a minor third above it — hammered four times on the triplet grid like a snare press, then the line peels off down the chord: octave root, ♭7, settling on the 5th. The repetition IS the lick; on a slow blues, stretch it toward a tremolo.',
+    },
+    {
+      // Over C7 as the V7 (an F blues): E♭5(15) held, D5(14), B♭4(10),
+      // G4(7), then the crush (E♭4=3)E4(4). The ♯9→9 melt is 15→14.
+      id: 'blues-cry-melt-v7',
+      name: 'The cry and melt (V7 fill)',
+      level: 'intermediate',
+      chordContext: 'over the V7, bar 9 of a slow blues',
+      quality: 'dom7',
+      techniques: ['grace-note'],
+      source: 'the ♯9→9 "crying" resolution — pianogroove.com slow-blues lessons; the no-5th grip per piano-ology "Dominant 7(♯9) Voicings"',
+      notes: [
+        { deg: '#9', octave: 1, beat: 1 },
+        { deg: '9', octave: 1, beat: 2 },
+        { deg: '7', beat: 2.33 },
+        { deg: '5', beat: 2.67 },
+        { deg: 'b3', beat: 3, technique: 'grace-note' },
+        { deg: '3', beat: 3 },
+      ],
+      tips: 'Lean on the ♯9 for a full beat — over the V7 it is the key\'s own ♭7, the crying note — then let it melt a half-step onto the natural 9, fall through the ♭7 and 5th, and land a ♭3 crush on the 3rd. Placement is the whole trick: bar 9 is the emotional peak of the form.',
+    },
+  ],
 }

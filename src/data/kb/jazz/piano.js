@@ -253,4 +253,99 @@ export default {
     targetNotes:
       'Land the 3rd of each chord on the downbeat of the change — your left hand is already holding it, so the ear-check is built in. In any ii–V–I the 7th of one chord falls a half-step to the 3rd of the next; play that two-note rail as a whole-note chorus before you play eighth notes.',
   },
+
+  // Structured piano licks (SCHEMA.md "Piano licks", task P-60). Degree-based
+  // and key-agnostic: every deg resolves through the stated quality, approach
+  // pitches are derived from the next deg note. Realized offsets in the
+  // comments use a C-rooted chord for readability; every interval claim in
+  // notes/tips was recomputed from those offsets before writing (P-41 bar).
+  licks: [
+    {
+      // Over Cm7: C5 B♭4 G4 (E4) (D4) E♭4 — offsets 12 10 7 [4] [2] 3. The
+      // approaches derive from the ♭3 target: above = 4 (the major 3rd, the
+      // outside note), below = 2 (the 9). Triplet pickup into beat 3.
+      id: 'jazz-enclosure-b3',
+      name: 'Enclosure into the ♭3',
+      level: 'intermediate',
+      chordContext: 'over the ii7',
+      quality: 'min7',
+      techniques: [],
+      source: 'the bebop enclosure — Barry Harris workshop vocabulary; David Baker, How to Play Bebop Vol. 1',
+      notes: [
+        { deg: '1', octave: 1, beat: 1 },
+        { deg: '7', beat: 1.5 },
+        { deg: '5', beat: 2 },
+        { approach: 'chrom-above', beat: 2.33 },
+        { approach: 'chrom-below', beat: 2.67 },
+        { deg: '3', beat: 3 },
+      ],
+      tips: 'The line falls down the chord — octave root, ♭7, 5th — then the enclosure frames the ♭3 from a half-step either side: the upper neighbour is the major 3rd (deliberately outside on a minor chord), the lower is the 9. Land the target on a strong beat; the two "wrong" notes are what make the right one land.',
+    },
+    {
+      // Over C7: E4 G4 B♭4 D♭5 C5 — offsets 4 7 10 13 12: stacked minor
+      // thirds 4→7→10→13 (the dim7 arpeggio off the 3rd), then the ♭9
+      // falling a half-step onto the octave root.
+      id: 'jazz-dim-flip-v7',
+      name: '3–♭9 arpeggio over the V7',
+      level: 'foundation',
+      chordContext: 'over the V7, resolving to the I',
+      quality: 'dom7',
+      techniques: [],
+      source: 'the 3–5–♭7–♭9 diminished arpeggio — David Baker, How to Play Bebop Vol. 1',
+      notes: [
+        { deg: '3', beat: 1 },
+        { deg: '5', beat: 1.5 },
+        { deg: '7', beat: 2 },
+        { deg: 'b9', octave: 1, beat: 2.5 },
+        { deg: '1', octave: 1, beat: 3 },
+      ],
+      tips: 'From the 3rd it is minor thirds all the way up — 3, 5, ♭7, ♭9 spell the diminished seventh chord that lives inside every dominant — and the ♭9 sighs a half-step back onto the octave root. When the chord changes, that landing note is renamed the I\'s 5th, so the lick resolves itself.',
+    },
+    {
+      // Over Cmaj7: C4 (E♭4) E4 G4 B4 D5 C5 — offsets 0 [3] 4 7 11 14 12.
+      // The chromatic slip derives from the 3rd (4−1=3); thirds 4→7→11→14;
+      // the 9 settles a whole step onto the octave root.
+      id: 'jazz-powell-ascent',
+      name: 'Powell ascent to the 9th',
+      level: 'intermediate',
+      chordContext: 'over the Imaj7',
+      quality: 'maj7',
+      techniques: [],
+      source: 'in the style of Bud Powell\'s right-hand arpeggio runs — Mark Levine, The Jazz Piano Book',
+      notes: [
+        { deg: '1', beat: 1 },
+        { approach: 'chrom-below', beat: 1.5 },
+        { deg: '3', beat: 2 },
+        { deg: '5', beat: 2.5 },
+        { deg: '7', beat: 3 },
+        { deg: '9', octave: 1, beat: 3.5 },
+        { deg: '1', octave: 1, beat: 4 },
+      ],
+      tips: 'One chromatic slip between the root and the 3rd, then nothing but thirds: 3–5–7–9 climbs the chord to the colour tone before the 9 relaxes a whole step onto the octave root. Arpeggiate to the 9th, not the root — the top of the line is where the chord gets its shine.',
+    },
+    {
+      // Over C7, dyads low+high struck together: B♭4+D5 → A4+C5 → G4+B♭4 →
+      // E4+G4 — offsets (10,14)(9,12)(7,10)(4,7). Every pair is a third
+      // (4,3,3,3 semitones); top voice 14→12→10→7, bottom 10→9→7→4; all
+      // eight notes diatonic to the dominant (Mixolydian) scale.
+      id: 'jazz-thirds-fall-dom',
+      name: 'Dominant thirds fall',
+      level: 'intermediate',
+      chordContext: 'over the V7, or any dominant bar of a jazz blues',
+      quality: 'dom7',
+      techniques: ['double-stop'],
+      source: 'the dominant scale in diatonic thirds — Barry Harris workshop vocabulary; placed like Red Garland\'s offbeat fills',
+      notes: [
+        { deg: '7', beat: 1 },
+        { deg: '9', octave: 1, beat: 1, technique: 'double-stop' },
+        { deg: '13', beat: 1.5 },
+        { deg: '1', octave: 1, beat: 1.5, technique: 'double-stop' },
+        { deg: '5', beat: 2 },
+        { deg: '7', beat: 2, technique: 'double-stop' },
+        { deg: '3', beat: 2.5 },
+        { deg: '5', beat: 2.5, technique: 'double-stop' },
+      ],
+      tips: 'Four dyads, each one a third: the top voice walks 9–root–♭7–5 (two whole steps, then a skip) while the bottom answers ♭7–13–5–3 (a half-step, a whole step, then a skip), landing on the chord\'s 3rd-plus-5th. No finger travels more than a minor third between hits. Played short on the offbeats it is comping; let it ring on the beat and it is a fill — same four grips.',
+    },
+  ],
 }
