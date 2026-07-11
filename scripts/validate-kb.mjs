@@ -499,6 +499,31 @@ for (const style of styleDirs) {
   }
 }
 
+// ── Global progression-id uniqueness over the REGISTRY (task C-50) ────────────
+// RelatedProgressions' ranking excludes the matched progression by ID ALONE
+// (rankRelatedProgressions: `prog.id !== match.id` — no style comparison, task
+// L-51), so a progression id repeated anywhere in the registry would silently
+// drop an unrelated style's entry from the related list. The per-style loop
+// above walks the FILES (kb/*/progressions.js) into `allIds`; this asserts the
+// same invariant over kb/index.js — the object the components actually
+// consume — so a registry wiring mistake the file walk never sees (a style
+// registered against another style's progressions module, a shared/duplicated
+// array) cannot reintroduce a duplicate.
+if (registry) {
+  const seenRegIds = new Map() // id → style it first appeared under
+  for (const style of Object.keys(registry)) {
+    const progs = registry[style]?.progressions
+    if (!Array.isArray(progs)) continue
+    for (const p of progs) {
+      const rw = `kb/index.js [${style}]`
+      if (typeof p?.id !== 'string' || !p.id) { err(rw, 'registry progression with missing/non-string id'); continue }
+      if (seenRegIds.has(p.id))
+        err(rw, `progression id '${p.id}' already registered under style '${seenRegIds.get(p.id)}' — ids must be globally unique across the registry (RelatedProgressions excludes the matched progression by id alone)`)
+      else seenRegIds.set(p.id, style)
+    }
+  }
+}
+
 if (errors.length) {
   console.error(`✗ KB validation failed — ${errors.length} error(s):\n`)
   for (const e of errors) console.error('  ' + e)

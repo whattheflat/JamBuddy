@@ -1193,7 +1193,134 @@ if (existsSync(join(ROOT, 'src/components/PianoLickCard.jsx'))) {
   warn('PianoLickCard vocab drift guard', 'src/components/PianoLickCard.jsx not yet authored (D-60)')
 }
 
-// ─── 8. Summary + exit code ───────────────────────────────────────────────────
+// ─── 8. RelatedProgressions ranking pins (C-50) ───────────────────────────────
+//
+// Pins the L-51-gate-verified ranking outcomes of RelatedProgressions.jsx
+// (rankRelatedProgressions / collapseChanges, exported for exactly this) so a
+// scoring-constant tweak, a collapse regression, or a KB addition that
+// reshuffles the top entries turns smoke red instead of silently changing what
+// jammers are recommended. Two live pins + one counterfactual:
+//
+//   (a) collapsed live 12-bar in A  → blues/blues-12bar top at score 152,
+//       annotation 'same changes'. Today matchLoopToProgression does NOT
+//       recognize the collapsed loop (the raw index is collapse-blind — the
+//       known D-62 fix (a) gap), so match.matched === false and blues-12bar
+//       itself ranks as a relative. ⚠ When D-62's collapsed-form indexing
+//       lands in match.js, the match flips to blues-12bar, the id-only
+//       exclusion removes it from entries, and these pins go red ON PURPOSE —
+//       re-pin deliberately then.
+//   (b) live ii–V–I in C → match jazz/jazz-251-major (quality overlap wins
+//       over jazz-251-minor), which is EXCLUDED from entries; top entry is
+//       jazz/jazz-251-minor at 156 'same changes' (100 same canonical shape +
+//       40 same style + 0 shared transitions — every quality differs — + 16
+//       Jaccard − 0 length).
+//   (c) no-collapse counterfactual: an INDEPENDENT replica of the §5 scoring
+//       formula (docs/design/one-screen.md), fed blues-12bar's RAW bar-per-bar
+//       degrees, scores 39 (36 transitions + 8 Jaccard·0.5 − 5 length, no
+//       +100) vs 152 with collapse — proving the mandatory collapse step is
+//       what makes the flagship "this 12-bar IS their 12-bar" relation fire.
+//       The replica-with-collapse must equal the live component score (152),
+//       grounding the replica so the 39 can't drift into fiction.
+
+console.log('\nRelatedProgressions ranking pins (C-50):')
+
+const relMod = await load('src/components/RelatedProgressions.jsx')
+const { rankRelatedProgressions, collapseChanges } = relMod
+const { loopToDegrees, canonicalDegrees } = match
+
+const LOOP_12BAR_A = ['A7', 'D7', 'A7', 'E7', 'D7', 'A7', 'E7'] // detection-collapsed 12-bar
+const LOOP_251_C = ['Dm7', 'G7', 'Cmaj7'] // live ii–V–I
+
+check('RelatedProgressions exports rankRelatedProgressions + collapseChanges', () => {
+  assert(typeof rankRelatedProgressions === 'function', 'rankRelatedProgressions is not an exported function')
+  assert(typeof collapseChanges === 'function', 'collapseChanges is not an exported function')
+})
+
+check('collapseChanges(blues-12bar) → 7 units [0,5,0,7,5,0,7] (raw 12 bars collapse to the detection form)', () => {
+  const prog = kb.blues.progressions.find((p) => p.id === 'blues-12bar')
+  assert(prog, 'blues-12bar missing from the registry')
+  const units = collapseChanges(prog)
+  const degs = units.map((u) => u.deg).join(',')
+  assert(degs === '0,5,0,7,5,0,7', `collapsed degrees [${degs}] ≠ [0,5,0,7,5,0,7]`)
+  assert(units.every((u) => u.quality === 'dom7'), 'collapsed qualities are not all dom7')
+})
+
+check('collapseChanges(blues-minor) pops the wrap-around pair → 5 units [0,5,0,8,7]', () => {
+  const prog = kb.blues.progressions.find((p) => p.id === 'blues-minor')
+  assert(prog, 'blues-minor missing from the registry')
+  const degs = collapseChanges(prog).map((u) => u.deg).join(',')
+  assert(degs === '0,5,0,8,7', `collapsed degrees [${degs}] ≠ [0,5,0,8,7] — the cycle wrap (last unit === first unit) must collapse too`)
+})
+
+const rank12 = rankRelatedProgressions(LOOP_12BAR_A)
+check('pin (a): collapsed 12-bar → matcher NONE today; blues-12bar top at exactly 152, "same changes"', () => {
+  assert(rank12, 'ranking returned null for a parseable loop')
+  assert(rank12.match.matched === false,
+    `match is ${rank12.match.id} — the raw loop index recognized a collapsed loop; D-62 fix (a) has landed: re-pin this section deliberately (blues-12bar now gets excluded by the id-only rule)`)
+  const top = rank12.entries[0]
+  assert(top && top.id === 'blues-12bar' && top.style === 'blues',
+    `top entry is ${top?.style}/${top?.id}, expected blues/blues-12bar`)
+  assert(top.score === 152, `blues-12bar scored ${top.score}, pinned 152 (100 shape + 36 transitions + 16 Jaccard − 0 length)`)
+  assert(top.annotation === 'same changes', `annotation '${top.annotation}' ≠ 'same changes'`)
+})
+
+const rank251 = rankRelatedProgressions(LOOP_251_C)
+check('pin (b): ii–V–I in C → match jazz-251-major (excluded); jazz-251-minor top at exactly 156, "same changes"', () => {
+  assert(rank251, 'ranking returned null for a parseable loop')
+  assert(rank251.match.matched && rank251.match.id === 'jazz-251-major',
+    `match is ${rank251.match.matched ? rank251.match.id : 'NONE'}, expected jazz-251-major (quality-overlap disambiguation)`)
+  assert(!rank251.entries.some((e) => e.id === 'jazz-251-major'),
+    'the matched progression leaked into its own related list — the id-only exclusion broke')
+  const top = rank251.entries[0]
+  assert(top && top.id === 'jazz-251-minor' && top.style === 'jazz',
+    `top entry is ${top?.style}/${top?.id}, expected jazz/jazz-251-minor`)
+  assert(top.score === 156, `jazz-251-minor scored ${top.score}, pinned 156 (100 shape + 40 style + 0 transitions + 16 Jaccard − 0 length)`)
+  assert(top.annotation === 'same changes', `annotation '${top.annotation}' ≠ 'same changes'`)
+  assert(rank251.entries.length <= 5, `${rank251.entries.length} entries > max 5`)
+})
+
+// Independent §5-formula replica (expectation-side reimplementation, same
+// philosophy as §7's pinned truth table — deliberately NOT calling the
+// component's private helpers). `collapse: false` reproduces the pre-L-51
+// bug the mandatory collapse step exists to prevent.
+function replicaScore(loop, prog, sameStyle, { collapse }) {
+  const SUFFIX_Q = { '': 'maj', 'm': 'min', '7': 'dom7', 'maj7': 'maj7', 'm7': 'min7' } // enough for the pinned loops
+  const loopDeg = loopToDegrees(loop)
+  const loopCanon = canonicalDegrees(loopDeg)
+  const trans = (units) => units.map((u, i) => {
+    const b = units[(i + 1) % units.length]
+    return { d: (((b.deg - u.deg) % 12) + 12) % 12, qa: u.quality, qb: b.quality }
+  })
+  const loopT = trans(loop.map((name, i) => ({ deg: loopDeg[i], quality: SUFFIX_Q[name.match(/^[A-G][b#]?(.*)$/)[1]] ?? null })))
+  const units = collapse
+    ? collapseChanges(prog)
+    : prog.degrees.map((d, i) => ({ deg: d, quality: prog.qualities[i] ?? null }))
+  const pCanon = canonicalDegrees(units.map((u) => u.deg))
+  const seen = new Set()
+  let shared = 0
+  for (const t of trans(units)) {
+    const k = `${t.d}|${t.qa}|${t.qb}`
+    if (seen.has(k)) continue
+    seen.add(k)
+    if (loopT.some((l) => l.d === t.d && (l.qa == null || t.qa == null || l.qa === t.qa) && (l.qb == null || t.qb == null || l.qb === t.qb))) shared++
+  }
+  const A = new Set(loopCanon.split(',')), B = new Set(pCanon.split(','))
+  const inter = [...A].filter((x) => B.has(x)).length
+  return (pCanon === loopCanon ? 100 : 0) + (sameStyle ? 40 : 0)
+    + Math.min(shared * 12, 36) + (inter / (A.size + B.size - inter)) * 16
+    - Math.abs(loop.length - units.length)
+}
+
+check('pin (c): no-collapse counterfactual — raw blues-12bar would score exactly 39 (replica grounded at 152 with collapse)', () => {
+  const prog = kb.blues.progressions.find((p) => p.id === 'blues-12bar')
+  const withCollapse = replicaScore(LOOP_12BAR_A, prog, false, { collapse: true })
+  assert(withCollapse === 152, `replica with collapse scored ${withCollapse} ≠ 152 — the replica drifted from the §5 formula; fix the replica (or the component changed: re-derive BOTH pins)`)
+  assert(rank12.entries[0].score === withCollapse, `replica (${withCollapse}) ≠ live component score (${rank12.entries[0].score}) — the grounding broke`)
+  const noCollapse = replicaScore(LOOP_12BAR_A, prog, false, { collapse: false })
+  assert(noCollapse === 39, `no-collapse counterfactual scored ${noCollapse} ≠ 39 (36 transitions + 8 half-Jaccard − 5 length) — the raw/collapsed relationship changed; re-derive the counterfactual`)
+})
+
+// ─── 9. Summary + exit code ───────────────────────────────────────────────────
 
 const total = passed + failures.length
 console.log('')
