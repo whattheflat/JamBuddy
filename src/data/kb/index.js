@@ -35,6 +35,7 @@ import gospelPiano from './gospel/piano.js'
 import popMeta from './pop/meta.js'
 import popProgressions from './pop/progressions.js'
 import popGuitar from './pop/guitar.js'
+import popPiano from './pop/piano.js'
 
 export default {
   jazz: {
@@ -85,6 +86,6 @@ export default {
   pop: {
     meta: popMeta,
     progressions: popProgressions,
-    instruments: { guitar: popGuitar },
+    instruments: { guitar: popGuitar, piano: popPiano },
   },
 }

@@ -52,6 +52,9 @@ const GUITAR_SHAPES = {
     { label: 'Open Am7',    type: 'open',  onlyRoot: 9,  frets: ['x',0,2,0,1,0], fingers: [0,0,2,0,1,0] },
     { label: 'Open Dm7',    type: 'open',  onlyRoot: 2,  frets: ['x','x',0,2,1,1], fingers: [0,0,0,3,1,2] },
   ],
+  // dim intentionally stays at 2 shapes: in real guitar practice the bare
+  // diminished TRIAD is almost always played as dim7 or m7♭5 (which contain
+  // it) — a third stand-alone triad grip would be contrived. (Task P-62 audit.)
   dim: [
     { label: 'A Barre',     type: 'barre', rootStr: 5, offsets: ['x',0,1,2,1,'x'], fingers: [0,1,2,4,3,0] },
     { label: 'Compact',     type: 'barre', rootStr: 4, offsets: ['x','x',0,1,3,1], fingers: [0,0,1,2,4,3] },
@@ -59,10 +62,16 @@ const GUITAR_SHAPES = {
   dim7: [
     { label: 'Movable Box', type: 'barre', rootStr: 5, offsets: ['x',0,1,2,1,2], fingers: [0,1,2,4,3,4] },
     { label: 'Compact',     type: 'barre', rootStr: 4, offsets: ['x','x',0,1,0,1], fingers: [0,0,1,2,3,4] },
+    // P-62: standard drop-3 dim7 with the root on the 6th string (R–♭♭7–♭3–♭5;
+    // e.g. G°7 = 3x232x) — jazzguitar.be diminished-chord chart shape.
+    { label: 'Drop 3',      type: 'barre', rootStr: 6, offsets: [0,'x',-1,0,-1,'x'], fingers: [2,0,1,3,1,0] },
   ],
   aug: [
     { label: 'E Barre',     type: 'barre', rootStr: 6, offsets: [0,3,2,1,1,0], fingers: [1,4,3,2,2,1] },
     { label: 'Compact',     type: 'barre', rootStr: 5, offsets: ['x',0,3,2,2,'x'], fingers: [0,1,4,2,3,0] },
+    // P-62: the top-four-string aug grip (R–♯5–R–3; e.g. D+ = xx0332) —
+    // standard chord-dictionary shape, movable like the file's other D shapes.
+    { label: 'D Shape',     type: 'barre', rootStr: 4, offsets: ['x','x',0,3,3,2], fingers: [0,0,1,3,4,2] },
   ],
   sus4: [
     { label: 'E Barre',     type: 'barre', rootStr: 6, offsets: [0,2,2,2,0,0], fingers: [1,2,3,4,1,1], barre: { fromStr: 1, toStr: 6, fo: 0 } },
@@ -81,16 +90,34 @@ const GUITAR_SHAPES = {
   half_dim: [
     { label: 'A Barre',     type: 'barre', rootStr: 5, offsets: ['x',0,1,0,1,'x'], fingers: [0,1,2,0,3,0] },
     { label: 'E Barre',     type: 'barre', rootStr: 6, offsets: [0,1,2,0,0,'x'], fingers: [1,2,3,1,1,0], barre: { fromStr: 2, toStr: 6, fo: 0 } },
+    // P-62: standard drop-3 m7♭5 with the root on the 6th string (R–♭7–♭3–♭5;
+    // e.g. Gø7 = 3x332x) — jazzguitar.be m7♭5 chart shape.
+    { label: 'Drop 3',      type: 'barre', rootStr: 6, offsets: [0,'x',0,0,-1,'x'], fingers: [2,0,3,4,1,0] },
+    // P-62: the one-finger-barre m7♭5 (R–♭5–♭7–♭3; e.g. Dø7 = xx0111) —
+    // standard chord-dictionary grip, movable.
+    { label: 'D Shape',     type: 'barre', rootStr: 4, offsets: ['x','x',0,1,1,1], fingers: [0,0,1,3,3,3], barre: { fromStr: 1, toStr: 3, fo: 1 } },
   ],
   maj6: [
     { label: 'E Barre',     type: 'barre', rootStr: 6, offsets: [0,2,2,1,2,0], fingers: [1,3,4,2,4,1], barre: { fromStr: 1, toStr: 6, fo: 0 } },
     { label: 'A Barre',     type: 'barre', rootStr: 5, offsets: ['x',0,2,2,2,2], fingers: [0,1,2,3,4,4], barre: { fromStr: 1, toStr: 2, fo: 2 } },
+    // P-62: the D6 grip (R–5–6–3; e.g. D6 = xx0202) — standard chord-dictionary
+    // shape; the swing/Western-swing four-string 6th, movable.
+    { label: 'D Shape',     type: 'barre', rootStr: 4, offsets: ['x','x',0,2,0,2], fingers: [0,0,1,3,1,4], barre: { fromStr: 2, toStr: 4, fo: 0 } },
   ],
   min6: [
     { label: 'E Barre',     type: 'barre', rootStr: 6, offsets: [0,2,2,0,2,0], fingers: [1,3,4,1,4,1], barre: { fromStr: 1, toStr: 6, fo: 0 } },
+    // P-62: the Dm6 grip (R–5–6–♭3; e.g. Dm6 = xx0201) — standard
+    // chord-dictionary shape, movable.
+    { label: 'D Shape',     type: 'barre', rootStr: 4, offsets: ['x','x',0,2,0,1], fingers: [0,0,1,3,1,2], barre: { fromStr: 2, toStr: 4, fo: 0 } },
+    // P-62: the movable open-Am6 shape (R–5–R–♭3–6; x02212 open, e.g.
+    // Bm6 = x24344) — standard barre-chart m6 entry.
+    { label: 'A Barre',     type: 'barre', rootStr: 5, offsets: ['x',0,2,2,1,2], fingers: [0,1,3,3,2,4], barre: { fromStr: 3, toStr: 4, fo: 2 } },
   ],
   add9: [
     { label: 'E Barre',     type: 'barre', rootStr: 6, offsets: [0,2,4,1,0,2], fingers: [1,2,4,3,1,1], barre: { fromStr: 1, toStr: 6, fo: 0 } },
+    // P-62: the movable core of the standard Aadd9 chart grip (x02420 open;
+    // the open high-e doubling doesn't move, so it is muted here): R–5–9–3.
+    { label: 'A Shape',     type: 'barre', rootStr: 5, offsets: ['x',0,2,4,2,'x'], fingers: [0,1,2,4,3,0] },
     { label: 'Open Cadd9',  type: 'open',  onlyRoot: 0,  frets: ['x',3,2,0,3,0], fingers: [0,3,2,0,4,0] },
     { label: 'Open Gadd9',  type: 'open',  onlyRoot: 7,  frets: [3,2,0,2,3,3], fingers: [2,1,0,3,4,4] },
     { label: 'Open Dadd9',  type: 'open',  onlyRoot: 2,  frets: ['x','x',0,2,3,0], fingers: [0,0,0,1,3,0] },
