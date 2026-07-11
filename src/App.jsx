@@ -10,6 +10,7 @@ import DebugView from './components/DebugView'
 import DrumView from './components/DrumView'
 import { NOTES, detectKey, detectTopKeys, matchChordFromChroma, detectRepeatingProgression, getChordTones, getChordCandidates, getNoteHistoryAnalysis } from './lib/theory'
 import ChordDetailModal from './components/ChordDetailModal'
+import RelatedProgressions from './components/RelatedProgressions'
 import LoopStation from './components/LoopStation'
 import JamGuide, { KnowledgeDock } from './components/JamGuide'
 import { useLoopEngine } from './services/loopEngine'
@@ -653,17 +654,16 @@ export default function App() {
         chordHistory={chordHistory}
         keyInfo={effectiveKey}
         detectedProgression={detectedProgression}
-        currentChord={currentChord}
         onChordClick={setSelectedChord}
       />
 
       {/* ── The jam dashboard grid (task L-50, one-screen.md §1/§6): JamGuide
           owns the two-column layout — LEFT: compact instrument view (chosen
           here, passed as the mainView slot) + licks strip + the related-
-          progressions slot (null until L-51); RIGHT: the suggested-voicings
-          rail. ProgressionSuggestions is unmounted (file kept) — its job
-          split into the rail + RelatedProgressions per the user directive.
-          Follows the one global instrument selector. ── */}
+          progressions slot (RelatedProgressions, task L-51); RIGHT: the
+          suggested-voicings rail. ProgressionSuggestions is unmounted (file
+          kept) — its job split into the rail + RelatedProgressions per the
+          user directive. Follows the one global instrument selector. ── */}
       <JamGuide
         detectedProgression={detectedProgression}
         keyInfo={effectiveKey}
@@ -678,7 +678,13 @@ export default function App() {
             {instrument === 'piano'  && <Piano keyInfo={effectiveKey} currentChord={currentChord} monoColor={monoColor} compact />}
           </>
         }
-        relatedSlot={null}
+        relatedSlot={
+          <RelatedProgressions
+            loop={detectedProgression}
+            keyInfo={effectiveKey}
+            onChordClick={setSelectedChord}
+          />
+        }
         fill={jamView}
       />
 

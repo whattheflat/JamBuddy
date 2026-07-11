@@ -91,7 +91,9 @@ export function findLoopPosition(chordHistory, loop) {
 // for each rotation, re-base so the first element is 0, then pick the
 // lexicographically smallest resulting sequence. Same loop → same string,
 // regardless of which chord it starts on.
-function canonicalDegrees(degrees) {
+// Exported additively for RelatedProgressions' ranking (task L-51,
+// one-screen.md §5) — no behaviour change.
+export function canonicalDegrees(degrees) {
   const n = degrees.length
   if (n === 0) return ''
   let best = null
@@ -110,7 +112,9 @@ function canonicalDegrees(degrees) {
 
 // Converts a loop of chord-name strings into semitone offsets from the loop's
 // own first chord. Returns null if any chord root is unparseable.
-function loopToDegrees(loop) {
+// Exported additively for RelatedProgressions' ranking (task L-51,
+// one-screen.md §5) — no behaviour change.
+export function loopToDegrees(loop) {
   if (!loop?.length) return null
   const pcs = loop.map(chordRootPC)
   if (pcs.some(pc => pc < 0)) return null
