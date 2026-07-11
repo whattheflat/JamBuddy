@@ -3,9 +3,11 @@
 //
 // Lib mode: scripts/smoke.mjs imports this file with KB_VALIDATE_AS_LIB=1 set to
 // reuse the exported pure checks (checkLick, checkPianoRecipe, checkBassPlay,
-// LEVELS, LICK_TECHNIQUES, MAX_HAND_SPAN, MIN_PLAYS_BASS, BASS_APPROACHES,
-// BASS_MAX_OFFSET) against in-memory fixtures — same logic, no copy. When the
-// env var is absent the script runs the full KB validation as before.
+// checkPianoLick, LEVELS, LICK_TECHNIQUES, PIANO_LICK_TECHNIQUES,
+// PIANO_LICK_APPROACHES, PIANO_LICK_MAX_OFFSET, MAX_HAND_SPAN, MIN_PLAYS_BASS,
+// BASS_APPROACHES, BASS_MAX_OFFSET) against in-memory fixtures — same logic,
+// no copy. When the env var is absent the script runs the full KB validation
+// as before.
 import { readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -272,6 +274,130 @@ export function checkLick(where, lick, style, seenIds) {
   return out
 }
 
+// ── Piano licks (SCHEMA.md "Piano licks") ────────────────────────────────────
+// Degree-based melodic phrases over ONE explicit quality (guitar tab is
+// instrument-truth and needs no quality; degrees need a context to resolve
+// through — chordContext stays the human sentence, `quality` is the machine
+// truth). Approaches are typed and DERIVED: each targets the next deg note in
+// the lick (there is no "next station" inside a self-contained lick), so the
+// validator can allow the non-chord tone without blessing arbitrary
+// chromatics — and an approach can never close a lick (nothing to target).
+//
+// Piano technique vocabulary — deliberately NOT LICK_TECHNIQUES: keys don't
+// bend, hammer, pull off, or sustain vibrato; chromatic-approach is redundant
+// (approaches are typed notes here). The three shared words keep their
+// guitar-lick meanings; grace-note (the crushed blues/gospel ornament) is
+// piano-specific. smoke.mjs guards both lists' consistency.
+export const PIANO_LICK_TECHNIQUES = ['slide', 'double-stop', 'ghost-note', 'grace-note']
+export const PIANO_LICK_APPROACHES = ['chrom-below', 'chrom-above']
+// Range cap on every RESOLVED offset (deg: pc + 12·octave; approach: derived):
+// [0, 25] semitones above the root. Proof against MiniPiano's render window
+// (absolute notes [0, 36], 0 = low C): place the root at its pitch class in
+// the bottom octave (0–11); the highest possible note is then 11 + 25 = 36 —
+// exactly the window's top key — so every legal lick fits in all 12 keys.
+export const PIANO_LICK_MAX_OFFSET = 25
+const PIANO_LICK_MAX_NOTES = 16      // 8ths over the 2-bar beat window (rule 3)
+const PIANO_LICK_MAX_BEAT = 9        // exclusive: 1 ≤ beat < 9 (two 4/4 bars)
+
+// Pure piano-lick validation. Returns an array of where-prefixed error strings
+// (empty = valid); mutates seenIds like checkLick (shared global id
+// namespace). Exported for reuse by scripts/smoke.mjs (lib mode).
+export function checkPianoLick(where, lick, style, seenIds) {
+  const out = []
+  const e = (msg) => out.push(`${where}: ${msg}`)
+  if (!lick || typeof lick !== 'object') { e('lick must be an object'); return out }
+  if (typeof lick.id !== 'string' || !lick.id.startsWith(`${style}-`))
+    e(`id must be a string starting with '${style}-'`)
+  else if (seenIds.has(lick.id)) e(`duplicate id '${lick.id}' (ids are global across progressions AND licks)`)
+  else seenIds.add(lick.id)
+  if (!lick.name) e('name missing')
+  if (!LEVELS.includes(lick.level)) e(`level must be one of ${LEVELS.join(' | ')}, got '${lick.level}'`)
+  if (typeof lick.chordContext !== 'string' || !lick.chordContext)
+    e("chordContext missing (which chord/station the lick fits, e.g. 'over the ii7')")
+  const quality = lick.quality
+  if (!CHORD_TYPES[quality]) {
+    e(`quality must be a CHORD_TYPES key (the context every deg resolves through), got '${quality}'`)
+    return out // nothing below is checkable without a quality
+  }
+  const summary = new Set()
+  if (!Array.isArray(lick.techniques)) e('techniques must be an array (may be empty for a plain lick)')
+  else for (const t of lick.techniques) {
+    if (!PIANO_LICK_TECHNIQUES.includes(t))
+      e(`unknown piano technique '${t}' — allowed: ${PIANO_LICK_TECHNIQUES.join(', ')}`)
+    summary.add(t)
+  }
+  const notes = lick.notes
+  if (!Array.isArray(notes) || !notes.length) { e('notes must be a non-empty ordered array'); return out }
+  if (notes.length > PIANO_LICK_MAX_NOTES)
+    e(`${notes.length} notes > ${PIANO_LICK_MAX_NOTES} (8ths over two bars) — not intermediate-friendly`)
+
+  // Pass 1: resolved offset of every deg note (null = unresolvable/malformed),
+  // so approaches can look up their target (the NEXT deg note in order).
+  const degOffsets = notes.map((n) => {
+    if (!n || typeof n !== 'object' || n.deg === undefined || typeof n.deg !== 'string') return null
+    const pc = resolveDegree(n.deg, quality)
+    if (pc === null) return null
+    const oct = n.octave === undefined ? 0 : n.octave
+    return oct === 0 || oct === 1 || oct === 2 ? pc + 12 * oct : null
+  })
+
+  let lastBeat = -Infinity
+  let prevApproach = null // type of the immediately preceding approach note
+  notes.forEach((n, ni) => {
+    const nw = `notes[${ni}]`
+    if (!n || typeof n !== 'object') return e(`${nw}: note must be an object ({deg,…} or {approach,…})`)
+    const isDeg = n.deg !== undefined
+    const isApproach = n.approach !== undefined
+    if (isDeg === isApproach) return e(`${nw}: exactly one of deg | approach per note`)
+    if (isApproach) {
+      if (!PIANO_LICK_APPROACHES.includes(n.approach))
+        e(`${nw}: unknown approach '${n.approach}' — allowed: ${PIANO_LICK_APPROACHES.join(', ')} (piano licks have no next station; 'fifth-of-next' is bass-only)`)
+      if (n.octave !== undefined)
+        e(`${nw}: octave applies to deg notes only (approach pitch is derived from its target)`)
+      if (prevApproach === n.approach)
+        e(`${nw}: two consecutive '${n.approach}' approaches derive the identical pitch — write the note you mean as a deg, or alternate types (the enclosure)`)
+      // Target = the NEXT deg note in order (scan past intervening approaches).
+      const ti = notes.findIndex((m, i) => i > ni && m?.deg !== undefined)
+      if (ti === -1) {
+        e(`${nw}: approach cannot close a piano lick — it targets the NEXT deg note (the final note must be a deg)`)
+      } else if (degOffsets[ti] !== null) {
+        const derived = degOffsets[ti] + (n.approach === 'chrom-below' ? -1 : 1)
+        if (derived < 0)
+          e(`${nw}: chrom-below of a root-position target derives −1 — below the render window; raise the target an octave`)
+        else if (derived > PIANO_LICK_MAX_OFFSET)
+          e(`${nw}: derived pitch sits ${derived} semitones above the root — max ${PIANO_LICK_MAX_OFFSET} (fits MiniPiano's 37-key window for all 12 roots)`)
+      } // target exists but is itself malformed → its own error already reports it
+      prevApproach = n.approach
+    } else {
+      prevApproach = null
+      if (typeof n.deg !== 'string') {
+        e(`${nw}: deg must be a degree STRING ('1', 'b7', …), got ${JSON.stringify(n.deg)}`)
+      } else {
+        const pc = resolveDegree(n.deg, quality)
+        if (pc === null) e(`${nw}: unresolvable degree '${n.deg}' for ${quality}`)
+        if (n.octave !== undefined && n.octave !== 0 && n.octave !== 1 && n.octave !== 2)
+          e(`${nw}: octave, when present, must be 0, 1 or 2 — got ${JSON.stringify(n.octave)}`)
+        else if (pc !== null && degOffsets[ni] !== null && degOffsets[ni] > PIANO_LICK_MAX_OFFSET)
+          e(`${nw}: '${n.deg}' octave ${n.octave} sits ${degOffsets[ni]} semitones above the root — max ${PIANO_LICK_MAX_OFFSET} (fits MiniPiano's 37-key window for all 12 roots)`)
+      }
+    }
+    if (n.technique !== undefined) {
+      if (!PIANO_LICK_TECHNIQUES.includes(n.technique))
+        e(`${nw}: unknown piano technique '${n.technique}' — allowed: ${PIANO_LICK_TECHNIQUES.join(', ')}`)
+      else if (!summary.has(n.technique))
+        e(`${nw}: technique '${n.technique}' must also appear in the lick's techniques[] summary`)
+    }
+    if (n.beat !== undefined) {
+      if (typeof n.beat !== 'number' || !(n.beat >= 1 && n.beat < PIANO_LICK_MAX_BEAT))
+        e(`${nw}: beat must be a number in [1, ${PIANO_LICK_MAX_BEAT}) — a lick spans at most two 4/4 bars, got ${JSON.stringify(n.beat)}`)
+      else if (n.beat < lastBeat)
+        e(`${nw}: beat ${n.beat} < previous beat ${lastBeat} — beats must be non-decreasing in note order`)
+      else lastBeat = n.beat
+    }
+  })
+  return out
+}
+
 async function loadModule(path) {
   return (await import(pathToFileURL(path).href)).default
 }
@@ -354,15 +480,18 @@ for (const style of styleDirs) {
       })
     }
 
-    // Optional structured licks (SCHEMA.md "Licks") — a top-level `licks` key
-    // on the instrument pack. Absent is fine; when present it must validate.
+    // Optional structured licks (SCHEMA.md "Licks" / "Piano licks") — a
+    // top-level `licks` key on the instrument pack. Absent is fine; when
+    // present it must validate. Routed by instrument: piano licks are
+    // degree-based (checkPianoLick); guitar licks are tab-based (checkLick).
     if (pack.licks !== undefined) {
       if (!Array.isArray(pack.licks) || !pack.licks.length) {
         err(iw, 'licks, when present, must be a non-empty array')
       } else {
+        const checkInstLick = inst === 'piano' ? checkPianoLick : checkLick
         pack.licks.forEach((lick, li) => {
           const lkw = `${iw} licks[${li}] "${lick?.id ?? '?'}"`
-          for (const m of checkLick(lkw, lick, style, allIds)) errors.push(m)
+          for (const m of checkInstLick(lkw, lick, style, allIds)) errors.push(m)
         })
         totals.licks += pack.licks.length
       }

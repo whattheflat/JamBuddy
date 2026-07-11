@@ -10,6 +10,7 @@
 import { register } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
+import { existsSync } from 'node:fs'
 
 // match.js imports './theory' extensionless (resolved by Vite at build time, but
 // raw Node ESM requires the extension). Register a tiny resolve hook that retries
@@ -517,8 +518,10 @@ check("every KB progression 'level', when present, is foundation|intermediate", 
 })
 
 // Same guard for any licks already shipped in the KB: run the REAL packs'
-// licks (if any) through checkLick — the registry and the validator must agree.
-check('every KB pack licks[] entry (if any) passes checkLick', () => {
+// licks (if any) through the instrument-routed checker — piano licks are
+// degree-based (checkPianoLick, §5c below), everything else is tab-based
+// checkLick — mirroring the validator's own routing.
+check('every KB pack licks[] entry (if any) passes its instrument\'s lick check', () => {
   const ids = new Set()
   for (const styleName of styleNames) {
     const instruments = kb[styleName]?.instruments ?? {}
@@ -526,8 +529,9 @@ check('every KB pack licks[] entry (if any) passes checkLick', () => {
       if (pack?.licks === undefined) continue
       assert(Array.isArray(pack.licks) && pack.licks.length,
         `${styleName}/${inst}: licks, when present, must be a non-empty array`)
+      const checkInstLick = inst === 'piano' ? kbv.checkPianoLick : checkLick
       for (const lick of pack.licks) {
-        const errs = checkLick(`${styleName}/${inst} ${lick?.id ?? '?'}`, lick, styleName, ids)
+        const errs = checkInstLick(`${styleName}/${inst} ${lick?.id ?? '?'}`, lick, styleName, ids)
         assert(errs.length === 0, errs.join('; '))
       }
     }
@@ -770,6 +774,171 @@ check('every KB bass pack play passes checkBassPlay', () => {
   console.log(`      (${bassPlays} live bass plays checked)`)
 })
 
+// ─── 5c. Piano lick schema (C-60) ─────────────────────────────────────────────
+//
+// Same lib-mode pattern as §4/§5/§5b: exercise the exported checkPianoLick
+// against in-memory fixtures — a realistic enclosure lick must pass, and each
+// malformed variant must FAIL with the specific error — proving the piano-lick
+// rules bite before any piano licks (P-60) are authored against them.
+
+console.log('\nPiano lick schema (validate-kb lib mode):')
+
+const { checkPianoLick, PIANO_LICK_TECHNIQUES, PIANO_LICK_APPROACHES, PIANO_LICK_MAX_OFFSET } = kbv
+
+check('validate-kb exports checkPianoLick / PIANO_LICK_TECHNIQUES / PIANO_LICK_APPROACHES / PIANO_LICK_MAX_OFFSET(=25)', () => {
+  assert(typeof checkPianoLick === 'function', 'checkPianoLick is not a function')
+  assert(Array.isArray(PIANO_LICK_TECHNIQUES)
+    && PIANO_LICK_TECHNIQUES.join(',') === 'slide,double-stop,ghost-note,grace-note',
+    `PIANO_LICK_TECHNIQUES must be exactly [slide, double-stop, ghost-note, grace-note], got ${JSON.stringify(PIANO_LICK_TECHNIQUES)}`)
+  assert(Array.isArray(PIANO_LICK_APPROACHES) && PIANO_LICK_APPROACHES.join(',') === 'chrom-below,chrom-above',
+    `PIANO_LICK_APPROACHES must be exactly [chrom-below, chrom-above] (no fifth-of-next — licks have no next station), got ${JSON.stringify(PIANO_LICK_APPROACHES)}`)
+  assert(PIANO_LICK_MAX_OFFSET === 25,
+    `PIANO_LICK_MAX_OFFSET must be 25 (root in the bottom octave: 11 + 25 = 36, MiniPiano's top key), got ${PIANO_LICK_MAX_OFFSET}`)
+})
+
+// Vocabulary-family consistency: every piano word except the piano-specific
+// 'grace-note' must also be a guitar lick word WITH THE SAME SPELLING — one
+// vocabulary family, not a third counting scheme. (The guitar set-equality
+// guard in §7b is untouched: LICK_TECHNIQUES itself did not change.)
+check("piano vocab ⊂ guitar vocab + 'grace-note' (shared words, one spelling)", () => {
+  const guitar = new Set(LICK_TECHNIQUES)
+  const strays = PIANO_LICK_TECHNIQUES.filter((t) => t !== 'grace-note' && !guitar.has(t))
+  assert(strays.length === 0,
+    `piano technique word(s) [${strays}] are neither 'grace-note' nor in LICK_TECHNIQUES — shared words must keep the guitar spelling`)
+  assert(!guitar.has('grace-note'),
+    "guitar vocab now contains 'grace-note' — it was piano-specific; update SCHEMA + this guard deliberately")
+})
+
+// A realistic, fully-valid fixture: a bebop enclosure into the 3rd over min7.
+// Offsets: '5'@1 → 19; approaches target '3'@1 → 15, deriving 16 and 14;
+// final deg '3'@1 → 15. All in [0, 25]; beats non-decreasing.
+const goodPianoLick = () => ({
+  id: 'jazz-enclosure-into-3',
+  name: 'Bebop enclosure into the 3rd',
+  level: 'intermediate',
+  chordContext: 'over the ii7',
+  quality: 'min7',
+  techniques: ['grace-note'],
+  source: 'Barry Harris workshop vocabulary',
+  notes: [
+    { deg: '5', octave: 1, beat: 1 },
+    { approach: 'chrom-above', beat: 2 },
+    { approach: 'chrom-below', beat: 2.5 },
+    { deg: '3', octave: 1, beat: 3, technique: 'grace-note' },
+  ],
+})
+
+check('good enclosure fixture PASSES checkPianoLick (0 errors)', () => {
+  const errs = checkPianoLick('fixture', goodPianoLick(), 'jazz', new Set())
+  assert(errs.length === 0, `expected clean pass, got: ${errs.join('; ')}`)
+})
+
+check("missing / unknown quality FAILS (degrees need a machine context, chordContext is prose)", () => {
+  const noQ = goodPianoLick(); delete noQ.quality
+  assert(checkPianoLick('fixture', noQ, 'jazz', new Set()).some((e) => e.includes('quality must be a CHORD_TYPES key')),
+    'missing quality accepted')
+  const badQ = goodPianoLick(); badQ.quality = 'minor7' // not a CHORD_TYPES key
+  assert(checkPianoLick('fixture', badQ, 'jazz', new Set()).some((e) => e.includes('quality must be a CHORD_TYPES key')),
+    "quality 'minor7' accepted")
+})
+
+check("unresolvable degree FAILS ('7' resolves on min7 but '2' never does)", () => {
+  const lick = goodPianoLick()
+  lick.notes[0] = { deg: '2', beat: 1 }
+  const errs = checkPianoLick('fixture', lick, 'jazz', new Set())
+  assert(errs.some((e) => e.includes("unresolvable degree '2'")), `deg '2' accepted: ${errs.join('; ')}`)
+})
+
+check('terminal approach FAILS (targets the next deg — the final note must be a deg)', () => {
+  const lick = goodPianoLick()
+  lick.notes.push({ approach: 'chrom-below', beat: 4 })
+  const errs = checkPianoLick('fixture', lick, 'jazz', new Set())
+  assert(errs.some((e) => e.includes('approach cannot close a piano lick')), `terminal approach accepted: ${errs.join('; ')}`)
+})
+
+check('consecutive SAME-type approaches FAIL (identical derived pitch); the enclosure (alternating) passes', () => {
+  const lick = goodPianoLick()
+  lick.notes[2] = { approach: 'chrom-above', beat: 2.5 } // above, above
+  const errs = checkPianoLick('fixture', lick, 'jazz', new Set())
+  assert(errs.some((e) => e.includes('consecutive')), `same-type approach pair accepted: ${errs.join('; ')}`)
+  // and the alternating original stays clean (already asserted above, but the contrast is the point)
+  assert(checkPianoLick('fixture', goodPianoLick(), 'jazz', new Set()).length === 0, 'alternating enclosure rejected')
+})
+
+check('chrom-below of a root-position target FAILS (derives −1, below the window)', () => {
+  const lick = goodPianoLick()
+  lick.notes = [{ approach: 'chrom-below', beat: 1 }, { deg: '1', beat: 2 }]
+  const errs = checkPianoLick('fixture', lick, 'jazz', new Set())
+  assert(errs.some((e) => e.includes('derives −1')), `sub-window approach accepted: ${errs.join('; ')}`)
+})
+
+check("range cap bites both ways: deg '5' octave 2 (=31) and chrom-above of a 25-offset target (=26) FAIL", () => {
+  const lick = goodPianoLick()
+  lick.notes[0] = { deg: '5', octave: 2, beat: 1 } // 7 + 24 = 31 > 25
+  const errs = checkPianoLick('fixture', lick, 'jazz', new Set())
+  assert(errs.some((e) => e.includes(`max ${PIANO_LICK_MAX_OFFSET}`)), `31-semitone deg accepted: ${errs.join('; ')}`)
+  const lick2 = goodPianoLick() // b9 @ octave 2 = 25 (legal boundary); chrom-above derives 26
+  lick2.quality = 'dom7'
+  lick2.notes = [{ approach: 'chrom-above', beat: 1 }, { deg: 'b9', octave: 2, beat: 2 }]
+  const errs2 = checkPianoLick('fixture', lick2, 'jazz', new Set())
+  assert(errs2.some((e) => e.includes('derived pitch sits 26')), `26-semitone derived approach accepted: ${errs2.join('; ')}`)
+  const lick3 = goodPianoLick() // the 25 boundary itself is legal: high root via octave 2 + b9… use deg '1' octave 2 = 24 and chrom-above = 25
+  lick3.notes = [{ approach: 'chrom-above', beat: 1 }, { deg: '1', octave: 2, beat: 2 }]
+  assert(checkPianoLick('fixture', lick3, 'jazz', new Set()).length === 0,
+    'the 25-semitone boundary (chrom-above of the double-octave root) was rejected — cap off by one')
+})
+
+check('bad octave values FAIL (3 and non-integers rejected; approaches take no octave)', () => {
+  const lick = goodPianoLick()
+  lick.notes[0] = { deg: '5', octave: 3, beat: 1 }
+  assert(checkPianoLick('fixture', lick, 'jazz', new Set()).some((e) => e.includes('octave, when present, must be 0, 1 or 2')),
+    'octave 3 accepted')
+  const lick2 = goodPianoLick()
+  lick2.notes[1] = { approach: 'chrom-above', octave: 1, beat: 2 }
+  assert(checkPianoLick('fixture', lick2, 'jazz', new Set()).some((e) => e.includes('octave applies to deg notes only')),
+    'octave on an approach accepted')
+})
+
+check("guitar-only technique words FAIL on piano ('bend' in summary; 'vibrato' per-note; summary honesty)", () => {
+  const lick = goodPianoLick()
+  lick.techniques = ['grace-note', 'bend']
+  assert(checkPianoLick('fixture', lick, 'jazz', new Set()).some((e) => e.includes("unknown piano technique 'bend'")),
+    "'bend' accepted on keys")
+  const lick2 = goodPianoLick()
+  lick2.notes[3].technique = 'vibrato'
+  assert(checkPianoLick('fixture', lick2, 'jazz', new Set()).some((e) => e.includes("unknown piano technique 'vibrato'")),
+    "'vibrato' accepted on keys")
+  const lick3 = goodPianoLick()
+  lick3.notes[3].technique = 'slide' // valid word, but not in techniques: [grace-note]
+  assert(checkPianoLick('fixture', lick3, 'jazz', new Set()).some((e) => e.includes("must also appear in the lick's techniques[]")),
+    'summary honesty not enforced')
+})
+
+check('beat range + ordering bite (beat 9; decreasing beats); density cap bites (17 notes)', () => {
+  const lick = goodPianoLick()
+  lick.notes[3].beat = 9
+  assert(checkPianoLick('fixture', lick, 'jazz', new Set()).some((e) => e.includes('beat must be a number in [1, 9)')),
+    'beat 9 accepted')
+  const lick2 = goodPianoLick()
+  lick2.notes[3].beat = 2.25 // after 2.5 — decreasing
+  assert(checkPianoLick('fixture', lick2, 'jazz', new Set()).some((e) => e.includes('beats must be non-decreasing')),
+    'decreasing beats accepted')
+  const lick3 = goodPianoLick()
+  lick3.notes = Array.from({ length: 17 }, () => ({ deg: '1' }))
+  assert(checkPianoLick('fixture', lick3, 'jazz', new Set()).some((e) => e.includes('17 notes > 16')),
+    '17-note lick accepted')
+})
+
+check('duplicate id FAILS (shared namespace with progressions and guitar licks)', () => {
+  const ids = new Set()
+  assert(checkPianoLick('fixture', goodPianoLick(), 'jazz', ids).length === 0, 'first insert should pass')
+  const errs = checkPianoLick('fixture', goodPianoLick(), 'jazz', ids)
+  assert(errs.some((e) => e.includes('duplicate id')), `duplicate id accepted: ${errs.join('; ')}`)
+})
+
+// (The PianoLickCard vocab drift guard lives in §7b-piano below — it needs the
+// jsx load hook, which is registered in §7.)
+
 // ─── 6. Loop-detection truth fixtures (C-30) ──────────────────────────────────
 //
 // Run every scripts/loop-fixtures.mjs case against the REAL
@@ -1004,6 +1173,25 @@ check('TECHNIQUE_VOCAB (LickCard.jsx) ≡ LICK_TECHNIQUES (validate-kb.mjs) as s
   assert(missingInCard.length === 0 && missingInSchema.length === 0,
     `technique vocab drift — in validator but not LickCard: [${missingInCard}] · in LickCard but not validator: [${missingInSchema}] — the two lists are hand-synced; add the word to BOTH or neither`)
 })
+
+// -- (b-piano) piano technique vocab set-equality (C-60 forward guard) ----------
+// Once D-60's PianoLickCard.jsx lands, its exported PIANO_TECHNIQUE_VOCAB must
+// be set-equal to the validator's PIANO_LICK_TECHNIQUES — the same hand-sync
+// rule as LickCard. Conditional so smoke stays green until the component
+// exists, then bites automatically (D-60's DoD includes making this pass).
+if (existsSync(join(ROOT, 'src/components/PianoLickCard.jsx'))) {
+  const pianoCardMod = await load('src/components/PianoLickCard.jsx')
+  check('PIANO_TECHNIQUE_VOCAB (PianoLickCard.jsx) ≡ PIANO_LICK_TECHNIQUES (validate-kb.mjs) as sets', () => {
+    const vocab = new Set(pianoCardMod.PIANO_TECHNIQUE_VOCAB ?? [])
+    const schema = new Set(PIANO_LICK_TECHNIQUES)
+    const missingInCard = [...schema].filter((t) => !vocab.has(t))
+    const missingInSchema = [...vocab].filter((t) => !schema.has(t))
+    assert(missingInCard.length === 0 && missingInSchema.length === 0,
+      `piano technique vocab drift — in validator but not PianoLickCard: [${missingInCard}] · in PianoLickCard but not validator: [${missingInSchema}] — hand-synced; add the word to BOTH or neither`)
+  })
+} else {
+  warn('PianoLickCard vocab drift guard', 'src/components/PianoLickCard.jsx not yet authored (D-60)')
+}
 
 // ─── 8. Summary + exit code ───────────────────────────────────────────────────
 

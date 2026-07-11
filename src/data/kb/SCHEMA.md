@@ -196,11 +196,12 @@ pack exists — a style without one is complete and valid):
 filler. A second play is welcome where a genuinely different lane exists
 (two-feel vs walking, say) — the validator sets a floor, not a ceiling.
 
-## Licks (optional, guitar first)
+## Licks (optional)
 
 A style's instrument pack may also teach short, named licks — the ordered-note
 phrases the Licks & Techniques cards render. **The whole section is optional**:
-a pack without licks is complete and valid.
+a pack without licks is complete and valid. Guitar licks are tab-based (this
+section); piano licks are degree-based (next section).
 
 **How to register licks:** add a `licks` array as one more top-level key on the
 instrument pack's default export (next to `styleIntro`/`comping`/`plays`/`improv`
@@ -266,6 +267,80 @@ over, source}`) is unchanged and still welcome — it feeds the improv text
 section. This top-level `licks` array is the *structured* shape that the lick
 cards render and the validator checks.
 
+## Piano licks (optional, degree-based)
+
+A piano pack's `licks` array uses the **degree language**, not tab — the same
+reasoning as bass patterns (hard rule 1): a lick renders over a *detected*
+chord in the *detected* key, so the data must transpose automatically, and a
+degree either resolves through the stated quality or it doesn't — you cannot
+misspell a pitch, only mislabel your intent. Registration is identical to
+guitar licks: a top-level `licks` key on `<style>/piano.js`; no registry
+change; the section is optional.
+
+Unlike guitar licks (whose tab is instrument-truth and needs no quality),
+degree-based licks **require an explicit `quality`** — a `CHORD_TYPES` key —
+so the validator can resolve every degree. `chordContext` stays the human
+sentence; `quality` is the machine truth. They must agree by eye ("over the
+ii7" → `min7`); the validator can only check the machine half.
+
+```js
+licks: [
+  {
+    id: 'jazz-enclosure-into-3',       // '<style>-<slug>', same global id namespace
+    name: 'Bebop enclosure into the 3rd',
+    level: 'intermediate',             // 'foundation' | 'intermediate'
+    chordContext: 'over the ii7',      // human text, as in guitar licks
+    quality: 'min7',                   // REQUIRED — CHORD_TYPES key every deg resolves through
+    techniques: ['grace-note'],        // summary tags, PIANO vocabulary (below)
+    source: 'Barry Harris workshop vocabulary',   // recommended attribution
+    notes: [                           // the ORDERED melodic line (played first → last)
+      { deg: '5', octave: 1, beat: 1 },
+      { approach: 'chrom-above', beat: 2 },        // targets the NEXT deg note
+      { approach: 'chrom-below', beat: 2.5 },      // enclosure: above, below…
+      { deg: '3', octave: 1, beat: 3, technique: 'grace-note' },  // …target
+    ],
+    tips: 'Optional transferable idea.',           // optional, unlike guitar licks
+  },
+]
+```
+
+Field rules (enforced by `node scripts/validate-kb.mjs` when a piano pack has
+`licks`; guitar packs keep the tab rules above — the validator routes by
+instrument):
+
+| Field | Rule |
+|---|---|
+| `id` `name` `level` `chordContext` | exactly as guitar licks (shared global id namespace) |
+| `quality` | required, a `CHORD_TYPES` key — the context every `deg` resolves through |
+| `techniques` | array; every entry from the **piano vocabulary** below (empty = plain) |
+| `notes` | non-empty ordered array; ≤ 16 notes (8ths over the 2-bar beat window — rule 3); the **final note must be a `deg` note** |
+| note shape | exactly one of `deg` \| `approach` per note |
+| `deg` | a degree **string** from the piano-recipe language, resolved through `quality` (the maj6/min6 `'7'` quirk applies — write `'6'`) |
+| `octave` | optional on `deg` notes, `0` (default) \| `1` \| `2` |
+| range cap | every resolved offset — `deg`: `pc + 12·octave`; `approach`: derived (below) — must sit in **[0, 25]** semitones above the root. Proof: MiniPiano's render window is absolute notes [0, 36] (0 = low C); placing the root at its pitch class in the bottom octave (0–11), the highest possible note is 11 + 25 = 36 — the window's top key — so **every lick fits the window in all 12 keys**. (Note `octave: 2` is only legal where the cap allows — e.g. ending on the high root `'1'`.) |
+| `approach` | `'chrom-below'` (target − 1 semitone) · `'chrom-above'` (target + 1). The **target is the next `deg` note** in `notes[]` order, scanning past intervening approaches — so `chrom-above, chrom-below, deg` is the classic enclosure and both approaches frame the same target. The pitch is always **derived**, never authored (that's why a non-chord tone is legal here while untyped chromatics stay illegal). Guitar licks have no "next station", so unlike bass approaches these target a note *inside* the lick — and therefore **cannot close it** (nothing to target). Consecutive approaches must **differ in type** (two of the same type would derive the identical pitch — write the note you mean as a `deg` instead). No `octave` on approach notes. |
+| `beat` | optional number, `1 ≤ beat < 9` (a lick spans at most two 4/4 bars); non-decreasing in order (equal beats = grace-note placement or a dyad) |
+| `technique` | optional per note, from the piano vocabulary; must also appear in `techniques[]` (same honesty rule as guitar) |
+| `source` | optional but recommended (checklist: nothing invented) |
+| `tips` | optional string |
+
+No root rule (unlike bass): a melodic line targets 3rds and 7ths; grounding
+the root is the bassist's job.
+
+**Piano technique vocabulary** (a distinct list from the guitar vocabulary —
+keys don't bend, hammer, or sustain vibrato; the shared words keep their
+guitar-lick meanings):
+
+`slide` (the blues key-slip, off a black key onto its neighbour) ·
+`double-stop` (two keys struck together) · `ghost-note` (barely-voiced filler)
+· `grace-note` (crushed ornament into the main note — piano-specific)
+
+The first three are shared with the guitar vocabulary and mean the same thing;
+`grace-note` exists only here. The smoke test guards both lists (and, once
+`PianoLickCard.jsx` exists, its exported `PIANO_TECHNIQUE_VOCAB` must be
+set-equal to the validator's `PIANO_LICK_TECHNIQUES` — same hand-sync rule as
+LickCard).
+
 ## Musician checklist (self-review before committing)
 
 - [ ] Plays per progression genuinely differ in register/density/technique
@@ -274,5 +349,6 @@ cards render and the validator checks.
 - [ ] Every tip teaches a transferable idea (voice leading, register, space), not just "play this"
 - [ ] Songs/licks have sources; nothing invented
 - [ ] Lick techniques use only the fixed vocabulary; every lick is playable as written (strings 1–6, frets 0–15, in order)
+- [ ] Piano licks state their `quality`, keep approaches typed and non-terminal, and stay within [0, 25] semitones of the root
 - [ ] Bass patterns state the root, keep approaches typed and terminal, and stay within an octave + a fifth of the root
 - [ ] `node scripts/validate-kb.mjs` green; `npm run build` green
