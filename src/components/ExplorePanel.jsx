@@ -16,6 +16,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import ChordBox from './ChordBox'
+import CircleOfFifths from './CircleOfFifths'
 import MiniPiano from './MiniPiano'
 import VoicingBrowser from './VoicingBrowser'
 import kb from '../data/kb/index.js'
@@ -345,6 +346,11 @@ export function ExploreSection({ keyInfo, levels, onToggleLevel, onChordClick })
         <div className="w-px h-5 bg-border shrink-0" />
         <LevelChips levels={levels} onToggle={onToggleLevel} />
       </div>
+
+      {/* Circle of fifths — live key map with inline diatonics (task D-61).
+          keyInfo here IS App's effectiveKey (App → KnowledgeDock → this section);
+          the circle is read-only — tapping wedges never touches key state. */}
+      <CircleOfFifths keyInfo={keyInfo} onChordClick={onChordClick} />
 
       <p className="text-[11px] text-gray-500">
         Chords shown in {NOTES[keyRootPc]} {keyMode}{keyInfo?.root ? '' : ' (no key detected yet)'} · tap any chord for voicings
