@@ -1486,6 +1486,92 @@ check('no-match fallback: unmatched loop → activeStyle null, secondary empty, 
     'no-match: cross-style rows must keep their §5 annotation')
 })
 
+// ─── 8b. "Try this" substitution engine truth-table (task L-73) ───────────────
+//
+// Pins docs/design/try-this-subs.md §3 (the Am–C–F worked tables) against the
+// REAL theory.suggestSubstitutions. Asserts the FULL ordered candidate list
+// (label + category), not just counts — so flipping any rule constant (e.g. the
+// relative offset 9→8, the borrowed-iv +5 gate, the 2nd-dom +7) turns this red
+// and names it. Categories order: relative · borrowed · extension · 2nd-dom, cap 4.
+
+console.log('\n"Try this" substitution engine (§3 truth-tables):')
+
+const { suggestSubstitutions } = theory
+
+// Compact "Label[category]" projection — the shape the pins compare.
+const subShape = (arr) => arr.map((s) => `${s.label}[${s.category}]`)
+
+const F_MAJ  = { rootPc: 5, quality: 'maj' }   // the F under the playhead
+const AM_MIN = { rootPc: 9, quality: 'min' }
+const C_MAJ  = { rootPc: 0, quality: 'maj' }
+
+check('F/maj in A MINOR (next Am) → [Dm(rel), Fmaj7(ext), E7(2nd-dom)] — borrowed iv SUPPRESSED', () => {
+  const got = subShape(suggestSubstitutions(F_MAJ, { root: 'A', mode: 'minor' }, { nextRootPc: 9 }))
+  const want = ['Dm[relative]', 'Fmaj7[extension]', 'E7[secondary_dominant]']
+  assert(JSON.stringify(got) === JSON.stringify(want), `got ${JSON.stringify(got)}`)
+  assert(!got.some((s) => s.startsWith('Fm[')), 'Fm must NOT appear under a minor reading (F is ♭VI, not IV)')
+})
+
+check('F/maj in C MAJOR (next Am) → [Dm, Fm(borrowed), Fmaj7, E7] — cap 4', () => {
+  const got = subShape(suggestSubstitutions(F_MAJ, { root: 'C', mode: 'major' }, { nextRootPc: 9 }))
+  const want = ['Dm[relative]', 'Fm[borrowed]', 'Fmaj7[extension]', 'E7[secondary_dominant]']
+  assert(JSON.stringify(got) === JSON.stringify(want), `got ${JSON.stringify(got)}`)
+})
+
+check('Rule D: Am/min → next C(0) yields G7 (V7 of C)', () => {
+  const got = subShape(suggestSubstitutions(AM_MIN, { root: 'C', mode: 'major' }, { nextRootPc: 0 }))
+  const want = ['C[relative]', 'Am7[extension]', 'G7[secondary_dominant]']
+  assert(JSON.stringify(got) === JSON.stringify(want), `got ${JSON.stringify(got)}`)
+})
+
+check('Rule D: C/maj → next F(5) yields C7 (V7 of F — the bluesy I7→IV, same-root but different chord)', () => {
+  const got = subShape(suggestSubstitutions(C_MAJ, { root: 'C', mode: 'major' }, { nextRootPc: 5 }))
+  const want = ['Am[relative]', 'Cmaj7[extension]', 'C7[secondary_dominant]']
+  assert(JSON.stringify(got) === JSON.stringify(want), `got ${JSON.stringify(got)}`)
+})
+
+check('borrowed-iv why spells the ♭6 FLAT (A→Ab), never the sharp G#', () => {
+  const subs = suggestSubstitutions(F_MAJ, { root: 'C', mode: 'major' }, { nextRootPc: 9 })
+  const fm = subs.find((s) => s.category === 'borrowed')
+  assert(fm && /A→Ab/.test(fm.why), `borrowed why must contain the flat A→Ab, got: ${fm && fm.why}`)
+  assert(fm && !/G#/.test(fm.why), 'borrowed why must not spell the ♭6 as the sharp G#')
+})
+
+check('extension why names the added tone by scale degree ("E is C\'s 3rd (the mediant)")', () => {
+  const subs = suggestSubstitutions(F_MAJ, { root: 'C', mode: 'major' }, { nextRootPc: 9 })
+  const ext = subs.find((s) => s.category === 'extension')
+  assert(ext && /3rd \(the mediant\)/.test(ext.why), `extension why: ${ext && ext.why}`)
+})
+
+check('Rule C never re-emits the input chord: Dm7 in C major → [F(rel)] (min7 extension self-skipped, NO add9-on-minor)', () => {
+  const chord = { rootPc: 2, quality: 'min7' }
+  const subs = suggestSubstitutions(chord, { root: 'C', mode: 'major' }, {})
+  assert(JSON.stringify(subShape(subs)) === JSON.stringify(['F[relative]']), `got ${JSON.stringify(subShape(subs))}`)
+  assert(!subs.some((s) => s.category === 'extension'), 'extension must be OMITTED when the only fit is the chord already sounding')
+  assert(!subs.some((s) => s.rootPc === chord.rootPc && s.quality === chord.quality),
+    'no suggestion may equal the input chord {rootPc,quality}')
+  assert(!subs.some((s) => s.quality === 'add9'), 'a MAJOR add9 must never be suggested for a minor-family chord (would raise the 3rd)')
+})
+
+check('Rule C on a 7th input adds a DIFFERENT colour: Cmaj7 in C major → [Am(rel), Cadd9(ext)] (not Cmaj7)', () => {
+  const chord = { rootPc: 0, quality: 'maj7' }
+  const subs = suggestSubstitutions(chord, { root: 'C', mode: 'major' }, {})
+  assert(JSON.stringify(subShape(subs)) === JSON.stringify(['Am[relative]', 'Cadd9[extension]']), `got ${JSON.stringify(subShape(subs))}`)
+  const ext = subs.find((s) => s.category === 'extension')
+  assert(ext && !(ext.rootPc === chord.rootPc && ext.quality === chord.quality),
+    'the extension must not be the input chord itself')
+})
+
+check('no key (!keyInfo.root) → [] (idle, never a fabricated suggestion)', () => {
+  assert(JSON.stringify(suggestSubstitutions(F_MAJ, {}, {})) === '[]', 'expected [] with empty keyInfo')
+  assert(JSON.stringify(suggestSubstitutions(F_MAJ, null, {})) === '[]', 'expected [] with null keyInfo')
+})
+
+check('Rule D omitted when no next chord is known (opts.nextRootPc absent)', () => {
+  const got = subShape(suggestSubstitutions(F_MAJ, { root: 'C', mode: 'major' }, {}))
+  assert(!got.some((s) => s.endsWith('[secondary_dominant]')), `2nd-dom must be absent, got ${JSON.stringify(got)}`)
+})
+
 // ─── 9. Summary + exit code ───────────────────────────────────────────────────
 
 const total = passed + failures.length

@@ -746,3 +746,173 @@ export function transposeChord(chordName, semitones) {
 export function transposeProgression(chords, semitones) {
   return chords.map(c => transposeChord(c, semitones))
 }
+
+// ─── "Try this" — key-aware substitution nudge (task L-73) ────────────────────
+//
+// Curated, learnable chord-substitution engine for the Jam Guide dashboard.
+// Spec: docs/design/try-this-subs.md §2 (the 4 category rules) + §3 (the worked
+// Am–C–F truth-tables). For the chord under the playhead, in the detected key,
+// returns up to 4 alternatives — each with one plain sentence that teaches WHY
+// it works. This is NOT the context-free colour-swap grid in education.js; this
+// one is key-aware and changes the root (relative / secondary dominant).
+//
+// All-in-module: reuses NOTES, NOTES_FLAT, noteName, noteIndex, CHORD_TYPES,
+// getChordsInKey, getScale, intervalName, toRomanNumeral, chordTonePcs. It does
+// NOT import match.js's chordRootPC (that would be circular) — it uses theory's
+// own noteIndex(keyInfo.root) for the key root pc.
+
+// Chord-quality families the rules branch on.
+const SUB_MAJOR_FAMILY = ['maj', 'maj7', 'maj6', 'add9']
+const SUB_MINOR_FAMILY = ['min', 'min7', 'min6']
+// Key modes with a major tonic ("major-ish") — the only readings under which the
+// borrowed-iv (Rule B) is honest. A minor/dorian/phrygian reading suppresses it.
+const SUB_MAJORISH_MODES = ['major', 'lydian', 'mixolydian']
+
+// Scale-degree vocabulary for the extension why-copy ("E is C's 3rd (the mediant)").
+const DEGREE_ORDINALS = ['root', '2nd', '3rd', '4th', '5th', '6th', '7th']
+const DEGREE_NAMES    = ['tonic', 'supertonic', 'mediant', 'subdominant', 'dominant', 'submediant', 'leading tone']
+
+// Name a pitch class by its scale degree in the key, e.g. "3rd (the mediant)".
+// Returns null if the pc is not diatonic (Rule C never calls it off-scale).
+function subDegreeWord(pc, keyRootPc, mode) {
+  const scale = SCALES[mode] ?? SCALES.major
+  const semi  = ((((pc - keyRootPc) % 12) + 12) % 12)
+  const idx   = scale.indexOf(semi)
+  if (idx < 0) return null
+  return `${DEGREE_ORDINALS[idx]} (the ${DEGREE_NAMES[idx]})`
+}
+
+/**
+ * suggestSubstitutions({ rootPc, quality }, keyInfo, opts = {})
+ *   → [{ rootPc, quality, label, why, category }]
+ *
+ * Categories, always in this order (softest → boldest), capped at 4:
+ *   relative · borrowed · extension · secondary_dominant
+ * Returns [] when there is no key (`!keyInfo?.root`) — the UI shows an idle line.
+ *
+ * `label = NOTES[rootPc] + CHORD_TYPES[quality].suffix`. `opts.nextRootPc` (the
+ * next loop station's root pc) gates Rule D. See docs/design/try-this-subs.md §2.
+ *
+ * Sanity (Am–C–F loop, §3):
+ *   F/maj (5) in A minor, next Am (9) → [Dm(rel), Fmaj7(ext), E7(2nd-dom)]  (no Fm)
+ *   F/maj (5) in C major, next Am (9) → [Dm, Fm(borrowed), Fmaj7, E7]        (cap 4)
+ *   Am/min(9) → next C (0): Rule D = G7 ;  C/maj(0) → next F (5): Rule D = C7
+ */
+export function suggestSubstitutions({ rootPc, quality } = {}, keyInfo, opts = {}) {
+  if (!keyInfo?.root) return []
+  const keyRootPc = noteIndex(keyInfo.root)
+  if (keyRootPc < 0 || rootPc == null || quality == null) return []
+
+  const mode      = keyInfo.mode ?? 'major'
+  const r         = ((rootPc % 12) + 12) % 12
+  const origLabel = NOTES[r] + (CHORD_TYPES[quality]?.suffix ?? '')
+  const isMajorFam = SUB_MAJOR_FAMILY.includes(quality)
+  const isMinorFam = SUB_MINOR_FAMILY.includes(quality)
+
+  // Diatonic chord-name set + scale pitch-class set for the gates.
+  const diatonic = new Set(getChordsInKey(keyInfo.root, mode))
+  const scaleInts = SCALES[mode] ?? SCALES.major
+  const scalePcs  = new Set(scaleInts.map(i => (keyRootPc + i) % 12))
+
+  const mk = (candRootPc, candQuality, why, category) => {
+    const pc = ((candRootPc % 12) + 12) % 12
+    return {
+      rootPc: pc,
+      quality: candQuality,
+      label: NOTES[pc] + (CHORD_TYPES[candQuality]?.suffix ?? ''),
+      why,
+      category,
+    }
+  }
+
+  const out = []
+
+  // ── Rule A — relative / diatonic-third sub (softest). Circle: inner ring. ──
+  // major-family → relative minor (root+9); minor-family → relative major (root+3).
+  // Emit only if the candidate is diatonic in the key.
+  {
+    let candRootPc = null, candQuality = null
+    if (isMajorFam)      { candRootPc = (r + 9) % 12; candQuality = 'min' }
+    else if (isMinorFam) { candRootPc = (r + 3) % 12; candQuality = 'maj' }
+    if (candRootPc !== null) {
+      const label = NOTES[candRootPc] + (CHORD_TYPES[candQuality].suffix)
+      if (diatonic.has(label)) {
+        // Shared tones = intersection of the two triads (root & 3rd of the original).
+        const origTones = new Set(chordTonePcs(r, quality))
+        const shared    = chordTonePcs(candRootPc, candQuality).filter(t => origTones.has(t))
+        const sharedNames = shared.map(t => noteName(t)).join(' & ')
+        const relWord = isMajorFam ? 'minor' : 'major'
+        const pull    = isMajorFam ? 'softer' : 'brighter'
+        const rn      = toRomanNumeral(label, keyInfo.root, mode)
+        out.push(mk(candRootPc, candQuality,
+          `${label} is ${origLabel}'s relative ${relWord} — shares ${sharedNames}. `
+          + `In this key it's the ${rn}: a ${pull} pull, same family. `
+          + `(Circle: its inner-ring relative.)`,
+          'relative'))
+      }
+    }
+  }
+
+  // ── Rule B — borrowed iv (the "Creep" move), conditional. NOT a circle step. ──
+  // Only under a major-ish reading, on the IV (root === keyRoot+5), major-family.
+  if (isMajorFam && SUB_MAJORISH_MODES.includes(mode) && r === (keyRootPc + 5) % 12) {
+    const n6  = noteName(keyRootPc + 9)            // natural 6th of the key
+    const nb6 = noteName(keyRootPc + 8, true)      // ♭6 — spelled FLAT (A→A♭, never G#)
+    out.push(mk(r, 'min',
+      `Borrow ${NOTES[r]}m (the iv) from the parallel minor — ${n6}→${nb6} adds that `
+      + `wistful pull home. The 'Creep' move.`,
+      'borrowed'))
+  }
+
+  // ── Rule C — extension / colour (same function, one diatonic colour tone). ──
+  // Vertical colour, NOT a circle step. Pick the first extension whose added tone
+  // is diatonic; omit the category if none qualifies.
+  //
+  // Two guards keep the suggestion an honest ALTERNATIVE, not the chord already
+  // sounding (the common case — jazz stations are min7/maj7/dom7):
+  //   (a) skip any candidate whose quality === the input quality — the chord
+  //       already carries that colour (a min7 input never re-emits min7).
+  //   (b) minor-family offers ONLY min7. CHORD_TYPES.add9 = [0,2,4,7] is a MAJOR
+  //       add9 (interval 4 = major 3rd), so applying it to a minor chord would
+  //       raise the 3rd (Dm → D, F♮→F♯) = a wrong-note suggestion. Never do it.
+  {
+    let opts2 = null
+    if (isMajorFam)          opts2 = [['maj7', 11], ['add9', 2], ['maj6', 9]]
+    else if (isMinorFam)     opts2 = [['min7', 10]]
+    else if (quality === 'dom7') opts2 = [['sus4', 5]]
+    if (opts2) {
+      const pick = opts2.find(([q, interval]) =>
+        q !== quality && scalePcs.has((r + interval) % 12))
+      if (pick) {
+        const [extQuality, interval] = pick
+        const addedPc   = (r + interval) % 12
+        const addedNote = noteName(addedPc)
+        const rn        = toRomanNumeral(origLabel, keyInfo.root, mode)
+        const dw        = subDegreeWord(addedPc, keyRootPc, mode)
+        out.push(mk(r, extQuality,
+          `Add the ${intervalName(interval).toLowerCase()} (${addedNote}) — same ${rn}, lusher. `
+          + `${addedNote} is ${keyInfo.root}'s own ${dw}, so it stays in the family.`,
+          'extension'))
+      }
+    }
+  }
+
+  // ── Rule D — secondary dominant of the next chord (boldest). Circle move. ──
+  // V7 of the next loop chord = (nextRootPc+7) dom7. Requires a known next chord;
+  // omit when the candidate is the identical chord already sounding.
+  if (opts.nextRootPc != null) {
+    const nextPc     = ((opts.nextRootPc % 12) + 12) % 12
+    const candRootPc = (nextPc + 7) % 12
+    const isSameChord = candRootPc === r && quality === 'dom7'
+    if (!isSameChord) {
+      const leadingTone = noteName(candRootPc + 4)   // dom7's 3rd = ascending leading tone (SHARP)
+      const nextName    = noteName(nextPc)
+      out.push(mk(candRootPc, 'dom7',
+        `Swap for ${NOTES[candRootPc]}7, the V7 of ${nextName} — its 3rd (${leadingTone}) leans `
+        + `a half-step into ${nextName}, pulling the loop around. One step clockwise on the circle.`,
+        'secondary_dominant'))
+    }
+  }
+
+  return out.slice(0, 4)
+}
