@@ -49,14 +49,12 @@
 // (MiniPiano's cropped-window geometry), technique chips, tips, source —
 // mirroring LickCard's full-size behaviour.
 //
-// ── Playback (▶) ──────────────────────────────────────────────────────────────
-// BassPatternCard's exact pattern: sequential single-note playVoicing calls
-// (order lives in setTimeout scheduling — playVoicing sorts/dedupes, wrong for
-// a melody), beats at a fixed preview tempo (even eighths beatless), ONE
-// sequence module-wide + stopAll() so it never layers over other previews,
-// unmount silences. Techniques are visual-only in playback (same precedent).
+// ── No playback (D-70 §3) ─────────────────────────────────────────────────────
+// The strip is purely visual — glance over audio (the user's settled call, "then
+// leave them off, better not"). The ▶ play path (sequencer + PlayButton) was
+// removed with the rest of the ▶s across the app; the card only renders now.
 //
-// ── Wiring contract (future LicksStrip integration — Luthier) ─────────────────
+// ── Wiring contract (LicksStrip integration — Luthier, L-71) ──────────────────
 //   <PianoLickCard lick={…} rootPc={0–11} chordLabel="Dm7" size="thumb|full" />
 //   lick       — one entry of a piano pack's top-level `licks` array
 //   rootPc     — the LIVE chord root pitch class (from the loop station)
@@ -67,10 +65,8 @@
 // Design tokens (tailwind.config.js) — SVG fills can't read Tailwind classes,
 // so the constants below mirror the tokens (LickCard/MiniPiano convention).
 
-import { useEffect } from 'react'
 import { NOTES, CHORD_TYPES } from '../lib/theory'
 import { resolveDegree } from './JamGuide'
-import { playVoicing, stopAll } from '../lib/chordAudio'
 
 // ─── Vocabulary (hand-synced with validate-kb.mjs PIANO_LICK_TECHNIQUES; the
 //     smoke §7b-piano guard enforces set-equality — add to BOTH or neither) ────
@@ -160,41 +156,6 @@ export function realizePianoLick(lick, rootPc) {
     chordTone: !(n.approach !== undefined) && chordPcs.has(mod12(abs[i] - root)),
     isRoot: !(n.approach !== undefined) && mod12(abs[i] - root) === 0,
   }))
-}
-
-// ─── Sequential playback (module-level: one lick at a time, app-wide) ─────────
-
-const PREVIEW_BPM = 96 // BassPatternCard's relaxed preview tempo
-
-let currentSeq = null // { timeouts: number[], handles: {stop}[] }
-
-function stopLick() {
-  if (!currentSeq) return
-  for (const t of currentSeq.timeouts) clearTimeout(t)
-  for (const h of currentSeq.handles) h.stop()
-  currentSeq = null
-}
-
-function playLick(realized) {
-  stopLick()
-  stopAll() // never layer over a VoicingBrowser (or any other) preview
-  const beatMs = 60000 / PREVIEW_BPM
-  const hasBeats = realized.every((n) => Number.isFinite(n.beat))
-  const times = realized.map((n, i) => (hasBeats ? (n.beat - 1) * beatMs : (i * beatMs) / 2))
-  const seq = { timeouts: [], handles: [] }
-  realized.forEach((n, i) => {
-    // Ring until the next distinct onset (equal beats = a dyad, same onset);
-    // the last note gets one beat. Small floor so tight ornaments still sound.
-    const nextT = times.slice(i + 1).find((t) => t > times[i])
-    const durMs = Math.max(160, (nextT !== undefined ? nextT - times[i] : beatMs) + 120)
-    seq.timeouts.push(
-      setTimeout(() => {
-        // abs is already in chordAudio's note space (0 = C3) — no offset.
-        seq.handles.push(playVoicing([n.abs], { strumMs: 0, durMs, gain: 0.5 }))
-      }, times[i]),
-    )
-  })
-  currentSeq = seq
 }
 
 // ─── Timeline layout (x = beat/column, y = pitch) ─────────────────────────────
@@ -479,28 +440,6 @@ function TechniqueChip({ tech }) {
   )
 }
 
-// Same ▶ pill as BassPatternCard / VoicingBrowser (classes mirrored so every
-// gallery reads identically).
-function PlayButton({ ariaLabel, onClick }) {
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      onClick={onClick}
-      className={
-        'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-accent ' +
-        'bg-surface px-2.5 text-xs font-semibold text-accent outline-none transition ' +
-        'hover:bg-accent hover:text-black focus-visible:ring-2 focus-visible:ring-accent'
-      }
-    >
-      <svg aria-hidden="true" viewBox="0 0 12 12" className="h-3 w-3 fill-current">
-        <path d="M2.5 1.5v9l8-4.5z" />
-      </svg>
-      Play
-    </button>
-  )
-}
-
 function PlaceholderCard({ name, size }) {
   return (
     <div
@@ -524,10 +463,6 @@ function PlaceholderCard({ name, size }) {
 export default function PianoLickCard({ lick, rootPc, chordLabel, size = 'full' }) {
   const realized = realizePianoLick(lick, rootPc)
   const name = typeof lick?.name === 'string' && lick.name.trim() ? lick.name : 'Untitled lick'
-
-  // Unmount (loop/style/instrument change) silences any running sequence —
-  // module-level state, so this is idempotent across sibling cards.
-  useEffect(() => () => stopLick(), [])
 
   if (!realized) {
     return <PlaceholderCard name={lick ? name : null} size={size} />
@@ -573,7 +508,7 @@ export default function PianoLickCard({ lick, rootPc, chordLabel, size = 'full' 
       )}
 
       {/* The pitch timeline */}
-      <div className="max-w-full overflow-x-auto">
+      <div className="max-w-full overflow-x-auto dark-scroll">
         <TimelineSvg
           layout={layout}
           ariaLabel={`Melody for ${name} over ${chordName}: ${pitchNames}`}
@@ -582,7 +517,7 @@ export default function PianoLickCard({ lick, rootPc, chordLabel, size = 'full' 
 
       {/* Keyboard view (full): the actual keys, numbered in strike order */}
       {full && (
-        <div className="max-w-full overflow-x-auto">
+        <div className="max-w-full overflow-x-auto dark-scroll">
           <LickKeyboard
             realized={realized}
             ariaLabel={`Keys for ${name} over ${chordName}, numbered in playing order`}
@@ -602,11 +537,6 @@ export default function PianoLickCard({ lick, rootPc, chordLabel, size = 'full' 
       {full && source && (
         <span className="text-[10px] text-gray-500 italic leading-snug">{source}</span>
       )}
-
-      <PlayButton
-        ariaLabel={`Play ${name} over ${chordName}`}
-        onClick={() => playLick(realized)}
-      />
     </div>
   )
 }

@@ -6,6 +6,7 @@ import GlanceRail, { AimDots, SoloLabel } from './GlanceRail'
 import BassPatternCard from './BassPatternCard'
 import VoicingBrowser from './VoicingBrowser'
 import LickCard, { TechniqueLegend } from './LickCard'
+import PianoLickCard from './PianoLickCard'
 import { ExploreSection, VoicingsSection, LevelChips } from './ExplorePanel'
 import { pianoVoicingChain } from '../lib/piano'
 import { parseChord } from '../lib/voicings'
@@ -132,8 +133,16 @@ function recipeVoicing(recipe, rootPc, quality) {
 //
 // `licksFor` was a closure-local inside LicksSection; lifted to module scope
 // during the L-33 restructure (D-31 §5) so the strip shares it instead of
-// duplicating the defensive read. Licks are guitar-only in the KB (C-20 schema).
-function licksFor(id) {
+// duplicating the defensive read. Guitar licks are tab entries (LickCard);
+// piano licks (D-70 §5.1) are the STRUCTURED entries only — those carrying a
+// `notes` array PianoLickCard can realize — so prose-only piano education
+// entries never render as placeholder cards. The dock's LicksSection reads
+// guitar (its default arg), so its behaviour is unchanged.
+function licksFor(id, instrument = 'guitar') {
+  if (instrument === 'piano') {
+    const l = kb?.[id]?.instruments?.piano?.licks
+    return Array.isArray(l) ? l.filter(x => Array.isArray(x?.notes)) : []
+  }
   const l = kb?.[id]?.instruments?.guitar?.licks
   return Array.isArray(l) ? l : []
 }
@@ -425,23 +434,25 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
     </p>
   )
 
-  // ── The licks strip (left column). Matched loops sort by the playhead
-  // station; heard-live falls back to the live chord's quality key (e.g. a
-  // "dom7" lick fits a live G7). Bass hides it (guitar tab licks are noise
-  // to a bassist mid-jam); LicksStrip also hides itself when empty. ──
-  const licksStrip = instrument !== 'bass' && match.matched ? (
+  // ── The licks strip (left column). It now FOLLOWS the global instrument
+  // (D-70 §5.1): guitar → tab LickCards, piano → PianoLickCards realized over
+  // the playhead root, bass → an honest "no bass licks" line. Matched loops
+  // sort by the playhead station; heard-live falls back to the live chord's
+  // quality key (e.g. a "dom7" lick fits a live G7). The live-chord context
+  // carries rootPc so PianoLickCard can realize its degrees. LicksStrip itself
+  // decides the empty behaviour per instrument (guitar hides; piano/bass show a
+  // slim honest line). ──
+  const licksContext = match.matched
+    ? contextStation
+    : liveChord
+      ? { rn: '', quality: liveChord.type, label: currentChord, rootPc: liveChord.rootPc }
+      : null
+  const licksStrip = (match.matched || liveChord) ? (
     <LicksStrip
       styleId={activeStyle}
       levels={ALL_LEVELS}
       instrument={instrument}
-      context={contextStation}
-    />
-  ) : instrument !== 'bass' && liveChord ? (
-    <LicksStrip
-      styleId={activeStyle}
-      levels={ALL_LEVELS}
-      instrument={instrument}
-      context={{ rn: '', quality: liveChord.type, label: currentChord }}
+      context={licksContext}
     />
   ) : null
 
@@ -472,7 +483,7 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
           </div>
         )}
         {relatedSlot != null && (
-          <div className={'order-4 xl:order-none min-w-0' + (fill ? ' xl:flex-1 xl:min-h-0 xl:overflow-y-auto' : '')}>
+          <div className={'order-4 xl:order-none min-w-0' + (fill ? ' xl:flex-1 xl:min-h-0 xl:overflow-y-auto dark-scroll' : '')}>
             {relatedSlot}
           </div>
         )}
@@ -481,7 +492,7 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
       {/* RIGHT — the suggested-voicings rail (the one contained scroller) */}
       <div
         className={
-          'order-2 xl:order-none min-w-0 xl:w-[500px] xl:shrink-0 xl:overflow-y-auto ' +
+          'order-2 xl:order-none min-w-0 xl:w-[500px] xl:shrink-0 xl:overflow-y-auto dark-scroll ' +
           (fill ? 'xl:h-full' : 'xl:max-h-[calc(100vh_-_1.5rem)]')
         }
       >
@@ -844,52 +855,101 @@ function LicksSection({ styles, levels, onToggleLevel }) {
   )
 }
 
-// ─── LicksStrip — glanceable licks below the rail (L-33, D-31 §2.4) ───────────
+// ─── LicksStrip — glanceable licks below the rail (L-33, D-31 §2.4; D-70 §5) ──
 //
-// Thumb LickCards for the active style, level-filtered, sorted current-station-
+// Thumb lick cards for the active style, level-filtered, sorted current-station-
 // context-first via the token-boundary matcher above. The "fits X — now" accent
-// ring + microcopy are STRIP-OWNED chrome rendered AROUND the card — LickCard
-// itself is untouched and shows chordContext only at size="full". Licks are
-// guitar-only in the KB, so under the piano tab the strip still shows them and
-// the heading says so. Style has no licks (or the level filter empties it) →
-// the strip hides entirely: an empty state would steal glance space to say
-// nothing. Tap a thumb → the card enlarges inline (comfort, not information).
+// ring + caption are STRIP-OWNED chrome rendered AROUND the card — the cards
+// themselves are untouched and show chordContext only at size="full".
+//
+// FOLLOWS THE GLOBAL INSTRUMENT (D-70 §5.1):
+//   guitar → LickCard (tab); piano → PianoLickCard, realized over the playhead
+//   root (context.rootPc); bass → the KB has no bass strip licks, so a slim
+//   honest line renders instead of the section vanishing.
+// Piano licks are the STRUCTURED ones only (`licksFor(id,'piano')` filters to
+// entries with a `notes` array) — jazz/blues/gospel/rnb ship them; other styles
+// read as empty under piano.
+//
+// UNIFORM FOOTPRINT (D-70 §5.2), imposed AT THE STRIP MOUNT, not inside the
+// cards: every closed thumb sits in a fixed 220×150 box whose SVG is normalised
+// to h-104/w-full (`h-[150px] [&>div]:h-full [&_svg]:!h-[104px] [&_svg]:!w-full`).
+// preserveAspectRatio (SVG default) scales each tab / piano-roll to that box and
+// centres it, so a guitar card and a piano card occupy the SAME box — zero edit
+// to LickCard/PianoLickCard geometry, so the dock's size="full" cards are
+// byte-identical. Tapping enlarges a card inline (size="full", unclamped).
+//
+// EMPTY BEHAVIOUR (D-70 §5.3): guitar hides on empty (a silent gap is fine, the
+// default); piano/bass show a slim honest line — the user actively switched
+// instruments there, so a vanished section would be confusing.
 //
 //   styleId    — KB style whose licks to show (the active style)
 //   levels     — the shared foundation/intermediate filter
-//   instrument — current instrument tab (piano → honest "guitar licks" heading)
-//   context    — { rn, quality, label } of the playhead station (or the live
-//                chord in the no-loop fallback); null → no context sort
-function LicksStrip({ styleId, levels, instrument, context }) {
-  // Inline enlarge (one card at a time); reset when the style changes.
-  const [expandedId, setExpandedId] = useState(null)
-  useEffect(() => { setExpandedId(null) }, [styleId])
+//   instrument — the global GUITAR/PIANO/BASS selector
+//   context    — { rn, quality, label, rootPc } of the playhead station (or the
+//                live chord in the no-loop fallback); rootPc realizes piano
+//                licks, label/rn/quality drive the context sort; null → no sort
+function EmptyLicksLine({ children }) {
+  return (
+    <p className="rounded-xl border border-dashed border-border px-3 py-2 text-xs text-gray-500">
+      {children}
+    </p>
+  )
+}
 
-  const visible = licksFor(styleId).filter(l => levels[lickLevel(l)])
+function LicksStrip({ styleId, levels, instrument, context }) {
+  // Inline enlarge (one card at a time); reset when the style/instrument changes.
+  const [expandedId, setExpandedId] = useState(null)
+  useEffect(() => { setExpandedId(null) }, [styleId, instrument])
+
+  const styleLabel = kb?.[styleId]?.meta?.label ?? styleId
+
+  // Bass: no strip licks in the KB — honest line, never a vanished section.
+  if (instrument === 'bass') {
+    return <EmptyLicksLine>No bass licks in the KB yet.</EmptyLicksLine>
+  }
+
+  const isPiano = instrument === 'piano'
+  const visible = licksFor(styleId, instrument).filter(l => levels[lickLevel(l)])
   const fitted = visible.filter(l => lickFitsContext(l, context))
   const rest = visible.filter(l => !lickFitsContext(l, context))
   const sorted = [...fitted, ...rest]
 
-  if (sorted.length === 0) return null
+  if (sorted.length === 0) {
+    // Piano: honest line (the player just switched to piano). Guitar: hide.
+    return isPiano
+      ? <EmptyLicksLine>No {styleLabel} piano licks in the KB yet.</EmptyLicksLine>
+      : null
+  }
 
-  const styleLabel = kb?.[styleId]?.meta?.label ?? styleId
   const fitLabel = typeof context?.label === 'string' ? context.label : null
+  const rootPc = Number.isFinite(context?.rootPc) ? context.rootPc : 0
+  // Fixed-box normaliser — applied only when closed (open cards grow freely).
+  const thumbBox = 'h-[150px] [&>div]:h-full [&_svg]:!h-[104px] [&_svg]:!w-full'
 
   return (
     <section
       className="rounded-2xl border border-border bg-panel p-3"
-      aria-label={`${styleLabel} guitar licks`}
+      aria-label={`${styleLabel} ${instrument} licks`}
     >
       <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
-        {styleLabel} licks · guitar
-        {instrument === 'piano' ? ' (no piano licks in the KB yet)' : ''}
+        {styleLabel} licks · {instrument}
         {fitted.length > 0 && fitLabel ? ` · fits ${fitLabel} first` : ''}
       </h4>
-      <div className="flex items-start gap-2 overflow-x-auto pb-1" role="list">
+      <div className="flex items-start gap-2 overflow-x-auto pb-1 dark-scroll" role="list">
         {sorted.map((l, idx) => {
           const id = l?.id ?? `lick-${idx}`
           const isFit = idx < fitted.length // sorted = fitted first, then rest
           const isOpen = expandedId === id
+          const card = isPiano ? (
+            <PianoLickCard
+              lick={l}
+              rootPc={rootPc}
+              chordLabel={fitLabel ?? undefined}
+              size={isOpen ? 'full' : 'thumb'}
+            />
+          ) : (
+            <LickCard lick={l} size={isOpen ? 'full' : 'thumb'} />
+          )
           return (
             <div key={id} role="listitem" className={`shrink-0 ${isOpen ? 'w-[340px]' : 'w-[220px]'}`}>
               <button
@@ -900,10 +960,11 @@ function LicksStrip({ styleId, levels, instrument, context }) {
                 className={
                   'block w-full rounded-lg text-left outline-none transition ' +
                   'focus-visible:ring-2 focus-visible:ring-accent ' +
-                  (isFit ? 'ring-1 ring-accent' : '')
+                  (isFit ? 'ring-1 ring-accent ' : '') +
+                  (isOpen ? '' : thumbBox)
                 }
               >
-                <LickCard lick={l} size={isOpen ? 'full' : 'thumb'} />
+                {card}
               </button>
               {isFit && fitLabel && (
                 <p className="mt-1 text-center text-[10px] font-medium text-accent">
