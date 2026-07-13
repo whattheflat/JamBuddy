@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Destructive operations — NEVER delete (hard rule)
+
+**Claude must never EXECUTE a destructive or irreversible command. Always ask, and hand the user the exact command(s) to run themselves.**
+
+This covers (non-exhaustively):
+- Deleting files/directories: `rm`, `rm -rf`, `rmdir`, `del`, `Remove-Item`.
+- Deleting branches: `git branch -d` / `-D`, `git push --delete`, `git push <remote> :branch`.
+- Deleting tags/remotes: `git tag -d`, `git remote remove` / `rm`.
+- Discarding work: `git reset --hard`, `git checkout -- <path>`, `git clean -f`.
+- Force-pushing: `git push -f` / `--force` / `--force-with-lease`.
+- Dropping data: `DROP`, `TRUNCATE`, destructive migrations.
+
+Instead: print the command(s) in a fenced block with a one-line note on what each does and what it affects, and let the **user run them**. Never run them yourself, even when the desired outcome is clear — `rm` and `-d` are **prompted, never executed**.
+
+Leave regular branches alone (`main`, the active sprint branch) unless the user explicitly names them. Before calling any branch "stale", prove containment (`git branch --merged`, 0 unique commits) and report that evidence — do not act on it.
+
+These are also enforced as `permissions.deny` rules in `.claude/settings.json` (defense-in-depth), but this behavioral rule is authoritative and covers cases the patterns can't.
+
 ## Commands
 
 ```bash
