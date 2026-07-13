@@ -28,21 +28,20 @@
 //             "loop"). This is where the retired RoadmapTrack's education
 //             folds in (D-40 §2) — theory.js `guideTones` / `voiceLeadingPairs`
 //             / `soloScale`, read-only imports.
-//   gallery — first cell = the station's OWN voicing (guitar: the KB play's
-//             recommended shape badged "play", when present; piano: the
-//             threaded/authored voicing labeled honestly, e.g. "LH 3-5-7-9" —
-//             the accordion's collapsed-thumb value survives here) + the full
-//             VoicingBrowser gallery (show={instrument}, dense). Cells
-//             FLEX-WRAP — rows never scroll horizontally; the piano worst case
-//             (~1,470px of cells) wraps to a second cell line instead (§4).
+//   gallery — the full VoicingBrowser (show={instrument}, dense) with the
+//             station's OWN voicing passed as `recommended` so it renders as the
+//             badged, accent-bordered first cell INSIDE the browser (no separate
+//             own-cell, no dupe — dashboard-polish.md §1.1/§2.1). Guitar caps at
+//             4 recommended-first shapes on one line (§1); piano is a 2×2 of
+//             `size="mini"` keyboards (§2). No ▶ anywhere (§3).
 //
 // Focus semantics (D-40 §4 — the pin, simplified): with everything always
 // expanded there is nothing left to hold open, so tapping a row header TOGGLES
 // that station as focused. The PARENT owns the state and the onFocusChord
 // emission (the D-03 fretboard guide-tone contract, byte-compatible); a focused
 // row shows an "aim on fretboard" chip; tap again (or the loop changes) to
-// clear. This component never emits focus-chord itself and NEVER triggers
-// audio on its own — every ▶ lives inside the gallery, behind a user gesture.
+// clear. This component never emits focus-chord itself and never triggers audio
+// — the ▶ previews were removed everywhere (dashboard-polish.md §3).
 //
 // NO auto-scroll (D-40 §4/§6.2 step 1): the band lives in page flow, where
 // scrollIntoView's nearest scroller is the DOCUMENT — it would yank the whole
@@ -61,8 +60,6 @@
 //   keyMode      — key mode name (soloScale's minor-key dominant nudge)
 
 import { NOTES, guideTones, voiceLeadingPairs, soloScale } from '../lib/theory'
-import ChordDiagram from './ChordDiagram'
-import MiniPiano from './MiniPiano'
 import VoicingBrowser from './VoicingBrowser'
 
 const pcName = (pc) => NOTES[((pc % 12) + 12) % 12]
@@ -139,9 +136,12 @@ function TransitionChip({ pair, wraps }) {
 function StationRow({
   st, isNow, isNext, isFocused, onToggleFocus, instrument, keyRoot, keyMode, rail, wraps,
 }) {
-  // The station's own voicing — the first gallery cell (D-40 §4).
-  const ownGuitar = instrument === 'guitar' && st.shape ? st.shape : null
-  const ownPiano = instrument === 'piano' && st.voicing ? st.voicing : null
+  // The station's own voicing — passed to VoicingBrowser as `recommended` so it
+  // renders as the badged, accent-bordered first cell inside the gallery (guitar:
+  // a shape; piano: a voicing matched by style). The separate own-cell is gone
+  // (dashboard-polish.md §1.1/§2.1 — it centralises the ≤4 rule and kills the old
+  // recommended/gallery duplicate).
+  const recommended = instrument === 'guitar' ? (st.shape ?? null) : (st.voicing ?? null)
 
   // Active row: unmistakable (accent ring + tint). Focused-but-not-now rows get
   // the softer accent border; everything else recedes to the 0.85 opacity floor
@@ -201,39 +201,19 @@ function StationRow({
         <TransitionChip pair={rail} wraps={wraps} />
       </div>
 
-      {/* ── Gallery: own-voicing cell FIRST (the recommended cell — full-accent
-             border reads as "the answer", one-screen.md §4; same size, no new
-             colour) + the full dense browser; cells WRAP, never scroll
-             horizontally (D-40 §4). Browser basis 320px: a guitar own-cell
-             (89px) still shares line one (89+6+320 = 415 ≤ 451) so the first
-             visual line shows play + 3 shapes = 4 across, while a piano
-             own-cell (≥156.4px) can never share it (156.4+6+320 = 482.4 > 468
-             even scrollbar-free) — the recommended voicing sits alone on line
-             one, prominence for free, and the gallery pairs at the FULL row
-             interior below it (the 279.6+156.4 mixed-pair fit needs all 451px). ── */}
-      <div className="flex flex-wrap items-start gap-1.5">
-        {(ownGuitar || ownPiano) && (
-          <figure className="flex shrink-0 flex-col items-center gap-1.5 rounded-md border border-accent bg-surface p-1.5">
-            <figcaption className="flex max-w-full items-center gap-1.5 text-[11px] font-medium leading-tight text-gray-300">
-              {ownGuitar && (
-                <span className="rounded bg-accent px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-black">
-                  play
-                </span>
-              )}
-              <span className="break-words">{ownGuitar ? ownGuitar.label : ownPiano.label}</span>
-            </figcaption>
-            {ownGuitar ? (
-              <ChordDiagram shape={ownGuitar} keyRoot={keyRoot} rootPc={st.rootPc} size="thumb" />
-            ) : (
-              <MiniPiano voicing={ownPiano} size="thumb" />
-            )}
-          </figure>
-        )}
-        <div className="min-w-0 flex-1 basis-[320px]">
-          {/* dense: the rail shows the mic-feedback microcopy once, below. */}
-          <VoicingBrowser rootPc={st.rootPc} quality={st.quality} show={instrument} dense />
-        </div>
-      </div>
+      {/* ── Gallery (dashboard-polish.md §1/§2): the recommended voicing is now
+             cell #1 INSIDE the browser (badged "play", accent border — "the
+             answer" prominence the old own-cell had, no dupe). Guitar caps at 4
+             recommended-first cells on one line; piano is a 2×2 of mini
+             keyboards. Full row interior, no separate own-cell. ── */}
+      <VoicingBrowser
+        rootPc={st.rootPc}
+        quality={st.quality}
+        show={instrument}
+        dense
+        recommended={recommended}
+        max={4}
+      />
     </div>
   )
 }
@@ -287,11 +267,10 @@ export default function GlanceRail({
         ))}
       </div>
 
-      {/* Mic-feedback microcopy — ONCE for the whole rail (D-31 §2.5); the
-          gallery mounts run `dense` and suppress their per-mount copy. */}
+      {/* No ▶ anywhere anymore (dashboard-polish.md §3 — "leave them off,
+          better not"); the rail is purely visual and follows the loop. */}
       <p className="mt-2 text-[11px] text-gray-500">
-        ▶ previews play through your speakers — while the mic is live, detection may
-        hear them. Nothing plays automatically.
+        Voicings follow the loop — the playhead highlights the chord you're on.
       </p>
     </section>
   )

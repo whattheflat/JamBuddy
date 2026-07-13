@@ -9,20 +9,19 @@
 //   Guitar section — every placeable `GUITAR_SHAPES[quality]` entry from
 //     src/lib/voicings.js (open shapes only in their native key, movable shapes
 //     only when the whole grip fits under fret 15), each cell = shape label +
-//     <ChordDiagram size="thumb"/> + its own ▶.
+//     <ChordDiagram size="thumb"/>.
 //   Piano section — all four src/lib/piano.js `pianoVoicing` styles
 //     (root / shell / rootlessA / rootlessB), each cell = the voicing's honest
-//     label (e.g. "rootless A (3-5-7-9)") + <MiniPiano voicing size="thumb"/> +
-//     its own ▶.
+//     label (e.g. "rootless A (3-5-7-9)") + <MiniPiano voicing/>.
 //
-// Playback: src/lib/chordAudio.js (L-20). ONE live {stop} handle for the whole
-// gallery — any ▶ stops the previous sound before starting (chord change and
-// unmount also stop it), so previews never layer. First ▶ click is the user
-// gesture that lazily creates the AudioContext.
+// No playback (L-70 / dashboard-polish.md §3): the per-cell ▶ preview was removed
+// from EVERY mount — the user settled "leave them off, better not." The component
+// is now purely visual; src/lib/chordAudio.js is no longer imported here.
 //
 // Mount points (wired by L-21/L-22, NOT here): Knowledge Center Voicings
 // section, ChordDetailModal Guitar/Piano tabs (show="guitar"/"piano", L-25),
-// and the Jam Guide station-enlarge view. This component stays pure & prop-driven.
+// and the Jam Guide station rail / heard-live view (dense). This component stays
+// pure & prop-driven.
 //
 // Layout: each instrument section is a flex-wrap gallery of fixed-content-width
 // cells, so it reflows to fewer columns (down to one cell per row) inside a
@@ -52,14 +51,26 @@
 //             two-octave + one-octave piano pair fit (279.6 + 6 + 156.4 = 442
 //             ≤ 451px row interior even with a classic Windows scrollbar in
 //             the rail's scroller; it was 452 vs 456, a ~4px squeak, before).
-//             Every pre-existing mount renders identically with no prop.
+//             L-70 (dashboard-polish.md §2) additionally renders the piano
+//             styles as a 2×2 grid of `size="mini"` keyboards under dense, and
+//             applies the `.dark-scroll` utility to each cell's scroller. Every
+//             pre-existing mount renders identically with no prop.
+//   recommended — a shape object (guitar) or voicing object (piano) marking the
+//             KB play's own voicing (dashboard rail only). Guitar: matched into
+//             the list by `label`, floated to cell #1, badged "play" + accent
+//             border, and the list reordered recommended-first (§1.2). Piano:
+//             matched by `voicing.style`, that 2×2 cell gets the accent border
+//             (§2.1). Default null → no highlight, order untouched.
+//   max     — cap the guitar list to this many cells (dashboard rail passes 4).
+//             Undefined → no cap (all placeable shapes). Off-rail mounts pass
+//             neither `recommended` nor `max`, so the guitar list keeps its raw
+//             `matchingShapes` declared order — byte-identical to today.
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import ChordDiagram from './ChordDiagram'
 import MiniPiano from './MiniPiano'
 import { GUITAR_SHAPES } from '../lib/voicings'
 import { pianoVoicing } from '../lib/piano'
-import { playVoicing, guitarShapeToNotes } from '../lib/chordAudio'
 import { NOTES, CHORD_TYPES } from '../lib/theory'
 
 // Standard-tuning open-string pitch classes, low-E first (mirrors ChordDiagram).
@@ -90,6 +101,57 @@ function matchingShapes(quality, rootPc) {
   })
 }
 
+// Lowest base fret of a movable shape under ChordDiagram's placement convention
+// (root-at-open-string → fret-12 barre). Open shapes sit at the nut (0).
+function baseFretOf(shape, rootPc) {
+  if (Array.isArray(shape.frets)) return 0
+  const idx = 6 - shape.rootStr
+  let bf = mod12(rootPc - (OPEN_PCS[idx] ?? 4))
+  if (bf === 0) bf = 12
+  return bf
+}
+
+// Count of muted strings in a shape's grip (fewer = a fuller voicing wins ties).
+function mutedCount(shape) {
+  const arr = Array.isArray(shape.frets) ? shape.frets : shape.offsets
+  return Array.isArray(arr) ? arr.filter((v) => v === 'x').length : 0
+}
+
+// The rail's ≤max, recommended-first ordering (dashboard-polish.md §1.2). Only
+// invoked when `recommended` and/or `max` are supplied (the dashboard rail) —
+// non-dense mounts skip it entirely and keep `matchingShapes` declared order,
+// so VoicingsSection/ChordDetailModal stay byte-identical.
+//   1. recommended first (matched into the placeable list by label; prepended
+//      even if it was filtered out as unplaceable);
+//   2. open-position forms (Array.isArray(frets));
+//   3. movable/barre by lowest base fret ascending;
+//   4. tiebreak: fewer muted strings, then declared order in GUITAR_SHAPES.
+// Then slice to `max` (recommended deduped so it never repeats). <max placeable
+// shapes just show what exist — the rule caps, never pads.
+function orderGuitarShapes(shapes, rootPc, recommended, max) {
+  const declaredIndex = new Map(shapes.map((s, i) => [s, i]))
+  let rec = null
+  if (recommended?.label) {
+    rec = shapes.find((s) => s.label === recommended.label) ?? recommended
+  }
+  const rest = shapes.filter((s) => s.label !== rec?.label)
+  rest.sort((a, b) => {
+    const aOpen = Array.isArray(a.frets) ? 0 : 1
+    const bOpen = Array.isArray(b.frets) ? 0 : 1
+    if (aOpen !== bOpen) return aOpen - bOpen
+    if (aOpen === 1) {
+      const bf = baseFretOf(a, rootPc) - baseFretOf(b, rootPc)
+      if (bf !== 0) return bf
+    }
+    const mc = mutedCount(a) - mutedCount(b)
+    if (mc !== 0) return mc
+    return (declaredIndex.get(a) ?? 0) - (declaredIndex.get(b) ?? 0)
+  })
+  const ordered = rec ? [rec, ...rest] : rest
+  const list = Number.isFinite(max) ? ordered.slice(0, max) : ordered
+  return { list, recLabel: rec?.label ?? null }
+}
+
 // "C", "Cm7", "Cmaj7"… — display name from the app's canonical chord model.
 function chordName(rootPc, quality) {
   const q = CHORD_TYPES[quality] ? quality : 'maj'
@@ -97,28 +159,6 @@ function chordName(rootPc, quality) {
 }
 
 // ─── Small presentational atoms ───────────────────────────────────────────────
-
-// Per-cell ▶. Small accent text sits on bg-surface (#0f0f0f), where accent
-// #a855f7 measures ≈4.8:1 — AA for small text (surface-background rule).
-function PlayButton({ ariaLabel, onClick }) {
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      onClick={onClick}
-      className={
-        'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-accent ' +
-        'bg-surface px-2.5 text-xs font-semibold text-accent outline-none transition ' +
-        'hover:bg-accent hover:text-black focus-visible:ring-2 focus-visible:ring-accent'
-      }
-    >
-      <svg aria-hidden="true" viewBox="0 0 12 12" className="h-3 w-3 fill-current">
-        <path d="M2.5 1.5v9l8-4.5z" />
-      </svg>
-      Play
-    </button>
-  )
-}
 
 function SectionHeading({ children }) {
   return (
@@ -128,47 +168,76 @@ function SectionHeading({ children }) {
   )
 }
 
-// One gallery cell: label on top, diagram thumb, its own ▶ underneath.
+// One gallery cell: label on top, diagram/keyboard thumb underneath.
 // bg-surface inside the bg-panel section gives the cells a quiet inlay border;
 // label is gray-300 on surface (AA comfortable at 11px semibold).
 // `dense` (D-51): p-1.5 instead of p-2 — 4px off each cell's box width, part of
 // the right-column margin-hardening. Non-dense output is byte-identical.
-function GalleryCell({ label, playLabel, onPlay, dense = false, children }) {
+// `recommended` (L-70, dashboard-polish.md §1.2): the KB play's shape/style —
+// accent border + a "play" badge (finger-this, not audio; ▶ is gone), the
+// prominence the old GlanceRail own-cell carried. Only ever set under the
+// dashboard rail, so non-recommended cells stay byte-identical.
+function GalleryCell({ label, recommended = false, dense = false, children }) {
   return (
-    <figure className={`flex min-w-0 flex-col items-center gap-1.5 rounded-md border border-border bg-surface ${dense ? 'p-1.5' : 'p-2'}`}>
-      <figcaption
-        className="max-w-full break-words text-center text-[11px] font-medium leading-tight text-gray-300"
-        title={label}
-      >
-        {label}
-      </figcaption>
+    <figure className={`flex min-w-0 flex-col items-center gap-1.5 rounded-md border ${recommended ? 'border-accent' : 'border-border'} bg-surface ${dense ? 'p-1.5' : 'p-2'}`}>
+      {recommended ? (
+        <figcaption
+          className="flex max-w-full items-center gap-1.5 text-center text-[11px] font-medium leading-tight text-gray-300"
+          title={label}
+        >
+          <span className="rounded bg-accent px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-black">
+            play
+          </span>
+          <span className="break-words">{label}</span>
+        </figcaption>
+      ) : (
+        <figcaption
+          className="max-w-full break-words text-center text-[11px] font-medium leading-tight text-gray-300"
+          title={label}
+        >
+          {label}
+        </figcaption>
+      )}
       {/* Scroll guard: MiniPiano's SVG has a fixed pixel width (up to ~266px
           for a 2-octave thumb window); scroll inside the cell on very narrow
-          viewports rather than letting it break the wrap layout. */}
-      <div className="max-w-full overflow-x-auto">{children}</div>
-      <PlayButton ariaLabel={playLabel} onClick={onPlay} />
+          viewports rather than letting it break the wrap layout. `dark-scroll`
+          (L-70 §4) dresses this scroller on the dashboard rail only (dense) —
+          the KC/modal keep the OS default, so non-dense stays byte-identical. */}
+      <div className={`max-w-full overflow-x-auto${dense ? ' dark-scroll' : ''}`}>{children}</div>
     </figure>
   )
 }
 
 // ─── The gallery ──────────────────────────────────────────────────────────────
 
-export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'both', dense = false }) {
+export default function VoicingBrowser({
+  rootPc = 0, quality = 'maj', show = 'both', dense = false, recommended = null, max,
+}) {
   const pc = mod12(Number.isFinite(rootPc) ? rootPc : 0)
   const name = chordName(pc, quality)
-  const chordKey = `${pc}:${quality}`
 
   // Section gating (D-23; 'bass' added by D-41 per D-40 §3). 'guitar' hides
   // the piano section, 'piano' hides the guitar section, 'bass' hides BOTH
   // (neither gallery is honest for a bassist — the one-liner below renders
   // instead, so the dock's VoicingsSection under the global BASS selector
   // stops showing guitar+piano). Anything else (incl. the 'both' default)
-  // shows both. Hooks stay unconditional; the shared stop-handle discipline
-  // (stop on chord change / unmount) is untouched by hiding a section.
+  // shows both. Hooks stay unconditional.
   const showGuitar = show !== 'piano' && show !== 'bass'
   const showPiano = show !== 'guitar' && show !== 'bass'
 
-  const guitarShapes = useMemo(() => matchingShapes(quality, pc), [quality, pc])
+  const allGuitarShapes = useMemo(() => matchingShapes(quality, pc), [quality, pc])
+
+  // Guitar list: the dashboard rail (recommended and/or max supplied) reorders
+  // recommended-first + caps to `max` (§1.2); every other mount keeps the raw
+  // `matchingShapes` declared order untouched — byte-identical to today.
+  const guitarView = useMemo(() => {
+    if (!recommended && !Number.isFinite(max)) {
+      return { list: allGuitarShapes, recLabel: null }
+    }
+    return orderGuitarShapes(allGuitarShapes, pc, recommended, max)
+  }, [allGuitarShapes, pc, recommended, max])
+  const guitarShapes = guitarView.list
+
   const pianoOptions = useMemo(
     () =>
       PIANO_STYLES.map((style) => ({
@@ -177,38 +246,10 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
       })),
     [pc, quality],
   )
-
-  // One live playback handle for the whole gallery: any new play (or chord
-  // change, or unmount) stops the previous sound first — the L-20 {stop}
-  // contract, so previews never layer or leak.
-  const handleRef = useRef(null)
-  const stopCurrent = () => {
-    handleRef.current?.stop()
-    handleRef.current = null
-  }
-
-  // Chord change → cleanup silences the old preview; same cleanup covers unmount.
-  useEffect(() => stopCurrent, [chordKey])
-
-  // Known advisory (L-20 gate): when a movable shape's root lands on an open
-  // string (base fret 0), ChordDiagram draws the fret-12 octave barre while
-  // guitarShapeToNotes places the grip at the open position — the SAME chord,
-  // one octave lower than drawn. Deliberately left as-is on both sides.
-  function playGuitar(shape) {
-    stopCurrent()
-    handleRef.current = playVoicing(guitarShapeToNotes(shape, { rootPc: pc }), {
-      strumMs: 45, // a light strum reads "guitar"
-      durMs: 1800,
-    })
-  }
-
-  function playPiano(voicing) {
-    stopCurrent()
-    handleRef.current = playVoicing(voicing?.notes ?? [], {
-      strumMs: 15, // near-block chord reads "piano"
-      durMs: 1800,
-    })
-  }
+  // Piano "recommended" (dashboard rail): the station's authored voicing matches
+  // one of the four styles → that 2×2 cell gets the accent border (§2.1). Guitar-
+  // shape `recommended` objects have no `.style`, so this stays null off-rail.
+  const recStyle = recommended && typeof recommended.style === 'string' ? recommended.style : null
 
   return (
     <div className="flex w-full min-w-0 flex-wrap gap-2">
@@ -241,8 +282,7 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
               <GalleryCell
                 key={`${shape.label}-${i}`}
                 label={shape.label}
-                playLabel={`Play ${name} — ${shape.label} guitar voicing`}
-                onPlay={() => playGuitar(shape)}
+                recommended={guitarView.recLabel !== null && shape.label === guitarView.recLabel}
                 dense={dense}
               >
                 <ChordDiagram shape={shape} rootPc={pc} size="thumb" />
@@ -265,10 +305,14 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
           </div>
         )}
 
+        {/* dense (dashboard rail, §2.1): the four styles render as a tidy 2×2
+            grid of compact `size="mini"` keyboards (two per column fit the
+            ~451px row interior). Non-dense keeps today's flex-wrap gallery at
+            size="thumb" — byte-identical. */}
         <div
           role="group"
           aria-label={`${name} piano voicings — every style shown, each playable`}
-          className={`flex flex-wrap items-stretch ${dense ? 'gap-1.5' : 'gap-2'}`}
+          className={dense ? 'grid grid-cols-2 gap-1.5' : 'flex flex-wrap items-stretch gap-2'}
         >
           {/* pianoVoicing() output carries no rootPc, and without it VoicingPiano
               falls back to the LOWEST voice for its "R" badge — wrong for rootless
@@ -277,11 +321,10 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
             <GalleryCell
               key={style}
               label={voicing.label}
-              playLabel={`Play ${name} — ${voicing.label} piano voicing`}
-              onPlay={() => playPiano(voicing)}
+              recommended={recStyle !== null && style === recStyle}
               dense={dense}
             >
-              <MiniPiano voicing={{ ...voicing, rootPc: pc }} size="thumb" />
+              <MiniPiano voicing={{ ...voicing, rootPc: pc }} size={dense ? 'mini' : 'thumb'} />
             </GalleryCell>
           ))}
         </div>
@@ -297,16 +340,6 @@ export default function VoicingBrowser({ rootPc = 0, quality = 'maj', show = 'bo
         </p>
       )}
 
-      {/* Mic-feedback caveat, per the L-20 header + D-20 §3 (microcopy tier).
-          Skipped under `dense`, where the GlanceRail shows the SAME microcopy
-          once for the whole rail (D-31 §2.5) instead of per gallery — and under
-          'bass', where there is no ▶ to caveat. */}
-      {!dense && (showGuitar || showPiano) && (
-        <p className="w-full basis-full text-[11px] text-gray-500">
-          Previews play through your speakers — while the mic is live, detection may
-          hear them.
-        </p>
-      )}
     </div>
   )
 }

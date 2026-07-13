@@ -24,6 +24,11 @@
 //     octave-end at-or-above the highest (plus the closing high C) — so a
 //     ≤1-octave shell renders ONE octave (~140px) instead of 2–3 (~266–390px)
 //     and Jam Guide station thumbs sit level with guitar ChordDiagram thumbs.
+//     `size="mini"` (L-70, dashboard-polish.md §2) is the SAME cropped window at
+//     scale 0.60 (vs thumb 0.8) so two cells fit one grid column of the rail's
+//     ~451px interior (2-octave cell 213.2px < 222.5px); it bumps the in-SVG "R"
+//     glyph (8→10 vu) and the bass-ring stroke (2→2.5) so both stay legible at
+//     the smaller render. `thumb`/`full` are byte-untouched — `mini` is additive.
 //     `size="full"` keeps the wide C-anchored 2–3-octave window: the enlarged
 //     view benefits from register context, and its output stays byte-identical
 //     to the D-10 behaviour.
@@ -177,6 +182,7 @@ function LegacyPiano({ rootPc, lh = [], rh = [] }) {
 // ════════════════════════════════════════════════════════════════════════════
 function VoicingPiano({ voicing, size }) {
   const isFull = size === 'full'
+  const isMini = size === 'mini'  // L-70: cropped-thumb window at 0.60 for the dashboard 2×2 grid
   const notes = Array.isArray(voicing?.notes) ? voicing.notes : []
   const rootPc = ((voicing?.rootPc ?? (notes.length ? notes[0] : 0)) % 12 + 12) % 12
   const bass = typeof voicing?.bass === 'number' ? voicing.bass : (notes.length ? Math.min(...notes) : null)
@@ -199,7 +205,7 @@ function VoicingPiano({ voicing, size }) {
     : Math.max(1, Math.ceil((maxNote - octStart * 12) / 12))
   // White keys: OCTAVES full octaves + 1 trailing C closing the top octave.
   const TOTAL_WHITES = WHITE_PCS.length * OCTAVES + 1
-  const scale = isFull ? 1 : 0.8
+  const scale = isFull ? 1 : isMini ? 0.6 : 0.8
   const baseW = WW * TOTAL_WHITES + 2
   const SVG_W = baseW * scale
   const SVG_H = (WH + (isFull ? 26 : 4)) * scale
@@ -267,12 +273,12 @@ function VoicingPiano({ voicing, size }) {
           {hl?.isBass && (
             <rect
               x={x + 1} y={2} width={WW - 3} height={WH - 2}
-              rx={2} fill="none" stroke={BASS_RING} strokeWidth={2}
+              rx={2} fill="none" stroke={BASS_RING} strokeWidth={isMini ? 2.5 : 2}
             />
           )}
           {hl?.isRoot && (
             <text x={x + (WW - 1) / 2} y={WH - 8}
-              textAnchor="middle" fill="white" fontSize={8} fontWeight="bold">
+              textAnchor="middle" fill="white" fontSize={isMini ? 10 : 8} fontWeight="bold">
               R
             </text>
           )}
@@ -292,12 +298,12 @@ function VoicingPiano({ voicing, size }) {
           {hl?.isBass && (
             <rect
               x={x + 1} y={2} width={BW - 2} height={BH - 2}
-              rx={2} fill="none" stroke={BASS_RING} strokeWidth={2}
+              rx={2} fill="none" stroke={BASS_RING} strokeWidth={isMini ? 2.5 : 2}
             />
           )}
           {hl?.isRoot && (
             <text x={x + BW / 2} y={BH - 5}
-              textAnchor="middle" fill="white" fontSize={6} fontWeight="bold">
+              textAnchor="middle" fill="white" fontSize={isMini ? 8 : 6} fontWeight="bold">
               R
             </text>
           )}
