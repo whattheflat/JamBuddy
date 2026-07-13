@@ -11,6 +11,7 @@ import DrumView from './components/DrumView'
 import { NOTES, detectKey, detectTopKeys, matchChordFromChroma, detectRepeatingProgression, getChordTones, getChordCandidates, getNoteHistoryAnalysis } from './lib/theory'
 import ChordDetailModal from './components/ChordDetailModal'
 import RelatedProgressions from './components/RelatedProgressions'
+import TryThis from './components/TryThis'
 import LoopStation from './components/LoopStation'
 import JamGuide, { KnowledgeDock } from './components/JamGuide'
 import { useLoopEngine } from './services/loopEngine'
@@ -854,11 +855,19 @@ export default function App() {
           </>
         }
         relatedSlot={
-          <RelatedProgressions
-            loop={detectedProgression}
-            keyInfo={effectiveKey}
-            onChordClick={setSelectedChord}
-          />
+          <div className="flex flex-col gap-3">
+            <TryThis
+              loop={detectedProgression}
+              keyInfo={effectiveKey}
+              currentChord={currentChord}
+              onChordClick={setSelectedChord}
+            />
+            <RelatedProgressions
+              loop={detectedProgression}
+              keyInfo={effectiveKey}
+              onChordClick={setSelectedChord}
+            />
+          </div>
         }
         fill={jamView}
       />
