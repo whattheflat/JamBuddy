@@ -67,43 +67,81 @@ const CATEGORY_TAG = {
   secondary_dominant: 'V7',
 }
 
+// Compute the substitution set for a chord NAME at loop index `pos` (−1 when the
+// chord is not a loop station). The next station's root pc gates Rule D (secondary
+// dominant of the next chord). Returns { name, pos, subs } or null when the name
+// won't parse. Reuses parseChordName / chordRootPC / suggestSubstitutions — never
+// re-derives theory.
+function subsForChord(name, pos, loopArr, keyInfo) {
+  const parsed = parseChordName(name)
+  if (!parsed) return null
+  let nextRootPc
+  if (loopArr && pos >= 0) {
+    const pc = chordRootPC(loopArr[(pos + 1) % loopArr.length])
+    if (pc >= 0) nextRootPc = pc
+  }
+  return { name, pos, subs: suggestSubstitutions(parsed, keyInfo, { nextRootPc }) }
+}
+
+// Choose the SUBJECT chord the card speaks about (pure — no hooks):
+//   (a) the live currentChord, if it parses and yields ≥1 sub (the playing case —
+//       whether or not it's a loop station; unchanged behaviour);
+//   (b) else the FIRST loop chord that yields ≥1 sub — so a rolled/detected loop
+//       in a locked key shows the card immediately, with no live input;
+//   (c) else null — no loop and no valid live chord → honest empty.
+function pickSubject(loopArr, keyInfo, currentChord) {
+  const pos = loopArr ? loopArr.indexOf(currentChord) : -1
+  const live = subsForChord(currentChord, pos, loopArr, keyInfo)
+  if (live && live.subs.length) return live
+  if (loopArr) {
+    for (let i = 0; i < loopArr.length; i++) {
+      const cand = subsForChord(loopArr[i], i, loopArr, keyInfo)
+      if (cand && cand.subs.length) return cand
+    }
+  }
+  return null
+}
+
 export default function TryThis({ loop, keyInfo, currentChord, onChordClick }) {
   const [cycle, setCycle] = useState(0)
   const lastPosRef = useRef(null)
-  const lastChordRef = useRef(null)
+  const lastNameRef = useRef(null)
 
-  const target = parseChordName(currentChord)
   const loopArr = Array.isArray(loop) && loop.length ? loop : null
-  const position = loopArr && target ? loopArr.indexOf(currentChord) : -1
+  const subject = pickSubject(loopArr, keyInfo, currentChord)
 
-  // Next station's root pc → gates Rule D (secondary dominant of the next chord).
-  let nextRootPc
-  if (loopArr && position >= 0) {
-    const pc = chordRootPC(loopArr[(position + 1) % loopArr.length])
-    if (pc >= 0) nextRootPc = pc
-  }
-
-  const subs = target ? suggestSubstitutions(target, keyInfo, { nextRootPc }) : []
+  // Position/name that DRIVE rotation. When following a live loop chord this is its
+  // playhead index (wrap → advance). When following a live chord not in the loop it
+  // is −1 (advance on chord change). In the (b) fallback the subject is a fixed loop
+  // station with no playhead — pos is stable and name is stable, so the effect fires
+  // once and the shown idea holds steady (visible, no flicker).
+  const rotationPos = subject ? subject.pos : -1
+  const subjectName = subject ? subject.name : null
 
   // Rotation: advance one idea each loop pass (playhead position wraps toward 0).
-  // With no loop (position −1), advance on each genuine currentChord change so
-  // the nudge still refreshes as the player moves. Detection watches the previous
-  // position/chord across renders via refs (no side effects during render).
+  // With no loop position (−1), advance on each genuine subject-chord change so the
+  // nudge refreshes as the player moves. Refs carry the previous pos/name across
+  // renders (no side effects during render). Runs unconditionally (before returns).
   useEffect(() => {
     const prevPos = lastPosRef.current
-    const prevChord = lastChordRef.current
-    lastPosRef.current = position
-    lastChordRef.current = currentChord
-    if (position >= 0) {
-      setCycle(c => advanceOnWrap(c, prevPos, position))
-    } else if (prevChord != null && prevChord !== currentChord) {
+    const prevName = lastNameRef.current
+    lastPosRef.current = rotationPos
+    lastNameRef.current = subjectName
+    if (subjectName == null) return
+    if (rotationPos >= 0) {
+      setCycle(c => advanceOnWrap(c, prevPos, rotationPos))
+    } else if (prevName != null && prevName !== subjectName) {
       setCycle(c => c + 1)
     }
-  }, [position, currentChord])
+  }, [rotationPos, subjectName])
 
-  // 0 subs → no card (no key, atonal, or a chord with no honest sub).
-  const picked = pickSub(subs, cycle)
+  // No subject (no loop + no valid live chord) or 0 subs → no card.
+  if (!subject) return null
+  const picked = pickSub(subject.subs, cycle)
   if (!picked) return null
+
+  const subs = subject.subs
+  const subjectChord = subject.name
 
   const { sub, idx, total } = picked
   const showIndicator = total > 1
@@ -113,11 +151,11 @@ export default function TryThis({ loop, keyInfo, currentChord, onChordClick }) {
   return (
     <section
       className="rounded-2xl border border-border bg-panel p-3"
-      aria-label={`Try this instead of ${currentChord}`}
+      aria-label={`Try this instead of ${subjectChord}`}
     >
       <h4 className="mb-2 flex items-baseline justify-between gap-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
         <span>
-          Try this instead of {currentChord}
+          Try this instead of {subjectChord}
           {keyInfo?.root ? ` · in ${keyInfo.root} ${keyInfo.mode ?? 'major'}` : ''}
         </span>
         {showIndicator && (
