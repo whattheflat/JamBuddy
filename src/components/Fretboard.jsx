@@ -1,4 +1,4 @@
-import { getPentatonicScale, getFullScale, getChordTones, NOTES } from '../lib/theory'
+import { getPentatonicScale, getFullScale, getChordTones, guideTones, NOTES } from '../lib/theory'
 
 // Standard tuning: pitch classes of open strings, high-E first (top of diagram)
 const STRINGS = [
@@ -37,7 +37,11 @@ function noteColor(isChordTone, isPenta, isScale, mono = false) {
   return null
 }
 
-export default function Fretboard({ keyInfo, currentChord, pentatonicOnly = false, monoColor = false }) {
+// `compact` (task L-50, one-screen.md §2): trimmed card chrome (p-3, legend
+// merged onto the heading line) + a natural-width cap on the SVG (max-width =
+// its viewBox width, so it never renders above scale 1.0). No fret reduction,
+// no transform scaling — the notes stay at their designed size.
+export default function Fretboard({ keyInfo, currentChord, pentatonicOnly = false, monoColor = false, jamFocusChord = null, compact = false }) {
   const { root, mode } = keyInfo ?? {}
 
   if (!root) return null
@@ -50,19 +54,77 @@ export default function Fretboard({ keyInfo, currentChord, pentatonicOnly = fals
     ? new Set(getChordTones(currentChord).map(n => NOTES.indexOf(n)))
     : new Set()
 
+  // ── Jam Guide focus: guide tones of the tapped Roadmap station ──────────────
+  // `guideTones` returns { third, seventh, hasSeventh }. We emphasise the 3rd
+  // (the quality-defining tone) and the secondary anchor — the 7th when present,
+  // else the 5th for a triad (hasSeventh:false). These pitch classes get a halo
+  // ring + a small tag so they read as a distinct "target" tier on top of the
+  // normal chord/penta/scale colouring.
+  let focusThird = -1, focusSeventh = -1, focusRootPc = 0
+  if (jamFocusChord && typeof jamFocusChord.rootPc === 'number') {
+    const gt = guideTones(jamFocusChord.rootPc, jamFocusChord.quality)
+    focusThird = gt.third
+    focusSeventh = gt.seventh
+    focusRootPc = gt.root
+  }
+  const hasFocus = focusThird >= 0
+  // Defense-in-depth: label the secondary anchor from its ACTUAL interval above
+  // the chord root, so a wrong `hasSeventh` boolean could never mislabel a 5th
+  // or 6th as a "7". 10/11 → "7", 9 → "6", 8 → "♭6"(#5), 7 → "5", 6 → "♭5".
+  const focusSeventhLabel = (() => {
+    const iv = ((focusSeventh - focusRootPc) % 12 + 12) % 12
+    if (iv === 10 || iv === 11) return '7'
+    if (iv === 9) return '6'
+    if (iv === 8) return '♭6'
+    if (iv === 6) return '♭5'
+    return '5'
+  })()
+  const focusLabel = pc =>
+    pc === focusThird ? '3' : pc === focusSeventh ? focusSeventhLabel : null
+
+  const heading = (
+    <p className={`text-sm text-gray-500 uppercase tracking-widest ${compact ? '' : 'mb-4'}`}>
+      Fretboard — {root} {mode}
+      {currentChord && <span className="text-amber-400 ml-2">/ {currentChord}</span>}
+      {hasFocus && <span className="text-accent ml-2">◎ guide tones</span>}
+    </p>
+  )
+
+  const legend = (
+    // Critic mechanical fix (L-50 gate): non-compact keeps HEAD's exact class
+    // string so the non-compact render stays byte-identical to the committed one.
+    <div className={compact ? 'flex flex-wrap items-center text-xs text-gray-500 gap-3' : 'mt-3 flex flex-wrap gap-5 text-xs text-gray-500'}>
+      <span><span className="text-accent">●</span> Chord tone</span>
+      <span style={{ color: monoColor ? '#c084fc' : '#f59e0b' }}>●</span><span> Pentatonic</span>
+      <span style={{ color: monoColor ? '#e9d5ff' : '#6b7280' }}>●</span><span> Scale</span>
+      {hasFocus && (
+        <span className="flex items-center gap-1">
+          <span
+            className="inline-block w-3 h-3 rounded-full border-2 border-accent"
+          />
+          Guide tones (3 / {focusSeventhLabel})
+        </span>
+      )}
+    </div>
+  )
+
   return (
-    <div className="bg-panel border border-border rounded-2xl p-6">
-      <p className="text-sm text-gray-500 uppercase tracking-widest mb-4">
-        Fretboard — {root} {mode}
-        {currentChord && <span className="text-amber-400 ml-2">/ {currentChord}</span>}
-      </p>
+    <div className={`bg-panel border border-border rounded-2xl ${compact ? 'p-3' : 'p-6'}`}>
+      {compact ? (
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          {heading}
+          {legend}
+        </div>
+      ) : (
+        heading
+      )}
 
       <div>
         <svg
           viewBox={`0 0 ${BOARD_W} ${BOARD_H}`}
           width="100%"
           height="auto"
-          style={{ display: 'block' }}
+          style={{ display: 'block', ...(compact ? { maxWidth: BOARD_W } : null) }}
         >
           {/* Fretboard background */}
           <rect x={NUT_X} y={PAD_T - 6} width={BOARD_W - NUT_X - 4} height={5 * STRING_H + 12}
@@ -121,23 +183,51 @@ export default function Fretboard({ keyInfo, currentChord, pentatonicOnly = fals
             Array.from({ length: NUM_FRETS }, (_, fi) => {
               const pc = (str.root + fi) % 12
               const color = noteColor(chordSet.has(pc), pentaSet.has(pc), scaleSet.has(pc), monoColor)
-              if (!color) return null
+              const tag = hasFocus ? focusLabel(pc) : null
+              // A guide tone outside the current scale still gets emphasised:
+              // draw a faint base dot so the halo has something to sit on.
+              if (!color && !tag) return null
 
               const cx = fi === 0 ? OPEN_X : fretX(fi)
               const cy = stringY(si)
+              const baseFill = color ? color.fill : '#2a2a2a'
+              const baseText = color ? color.text : '#a855f7'
 
               return (
                 <g key={`${si}-${fi}`}>
-                  <circle cx={cx} cy={cy} r={DOT_R} fill={color.fill} />
+                  {/* Guide-tone halo: a purple ring around the dot, clearly
+                      distinct from the solid chord-tone fill (a "target" marker). */}
+                  {tag && (
+                    <circle
+                      cx={cx} cy={cy} r={DOT_R + 3}
+                      fill="none" stroke="#a855f7" strokeWidth={2.5}
+                    />
+                  )}
+                  <circle cx={cx} cy={cy} r={DOT_R} fill={baseFill} />
                   <text
                     x={cx} y={cy + 4}
                     textAnchor="middle"
                     fontSize={9}
                     fontWeight="600"
-                    fill={color.text}
+                    fill={baseText}
                   >
                     {NOTES[pc]}
                   </text>
+                  {/* Degree badge (3 / 7 / 5) on the halo's upper-right. */}
+                  {tag && (
+                    <>
+                      <circle cx={cx + DOT_R} cy={cy - DOT_R} r={6} fill="#a855f7" />
+                      <text
+                        x={cx + DOT_R} y={cy - DOT_R + 3}
+                        textAnchor="middle"
+                        fontSize={8}
+                        fontWeight="700"
+                        fill="#fff"
+                      >
+                        {tag}
+                      </text>
+                    </>
+                  )}
                 </g>
               )
             })
@@ -145,11 +235,7 @@ export default function Fretboard({ keyInfo, currentChord, pentatonicOnly = fals
         </svg>
       </div>
 
-      <div className="mt-3 flex gap-5 text-xs text-gray-500">
-        <span><span className="text-accent">●</span> Chord tone</span>
-        <span style={{ color: monoColor ? '#c084fc' : '#f59e0b' }}>●</span><span> Pentatonic</span>
-        <span style={{ color: monoColor ? '#e9d5ff' : '#6b7280' }}>●</span><span> Scale</span>
-      </div>
+      {!compact && legend}
     </div>
   )
 }

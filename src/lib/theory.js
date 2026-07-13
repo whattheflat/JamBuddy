@@ -235,6 +235,168 @@ export function getChordsInKey(root, mode) {
   return scale.map((degree, i) => noteName(rootIdx + degree) + qualities[i])
 }
 
+// ─── Jam Guide: derived improv theory (L-01b) ─────────────────────────────────
+//
+// Three additive, pure helpers that feed the Roadmap Jam Guide. They are
+// key-agnostic: chords are described as a pitch class (0–11) + a CHORD_TYPES
+// quality key (e.g. 'min7', 'dom7', 'maj7', 'half_dim'), exactly the shape the
+// KB progression data already uses (`degrees` + `qualities`). They reuse
+// CHORD_TYPES / getChordTones rather than re-deriving intervals.
+//
+// Chord arg shape: { root, quality } where root is a pitch class 0–11 and
+// quality is a CHORD_TYPES key. This matches the KB station model
+// ({ degrees[i], qualities[i] }) so a caller maps a station to a chord with no
+// string parsing.
+
+// Internal: resolve a chord's pitch-class tone set from a CHORD_TYPES key.
+// Returns the intervals mapped to absolute pitch classes, preserving the
+// CHORD_TYPES interval order (index 0 = root, 1 = 3rd, last = 7th when present).
+function chordTonePcs(rootPc, quality) {
+  const type = CHORD_TYPES[quality] ?? CHORD_TYPES.maj
+  const r = ((rootPc % 12) + 12) % 12
+  return type.intervals.map(i => (r + i) % 12)
+}
+
+/**
+ * guideTones(rootPc, quality) → { third, seventh, root }
+ *
+ * The guide tones a soloist targets: a chord's 3rd and 7th. Index 1 in every
+ * CHORD_TYPES interval set is the 3rd. A chord has a TRUE 7th only if its
+ * interval set contains 10 (m7) or 11 (M7) — NOT merely if it has 4 tones.
+ * When there is no real 7th (triads, and 4-tone non-7th chords like add9
+ * [0,2,4,7] or maj6/min6 [0,4,7,9]) we fall back to the 5th as the secondary
+ * anchor and flag `hasSeventh: false` so a caller labels it honestly ("5th",
+ * not "7th"). dim/dim7/aug have no perfect 5th, so they anchor on their ♭5/#5.
+ *
+ * Returns pitch classes (0–11) so the Roadmap TARGET lane can place dots in any
+ * key. `root` is included as the third anchor the design's badges reference.
+ *
+ * Sanity (C): guideTones(0,'maj7') → third 4 (E), seventh 11 (B), hasSeventh:true.
+ *             guideTones(7,'dom7') → third 11 (B), seventh 5 (F), hasSeventh:true.
+ *             guideTones(2,'min7') → third 5 (F), seventh 0 (C), hasSeventh:true.
+ *             guideTones(0,'add9') → third 4 (E), seventh 7 (G=5th), hasSeventh:false.
+ *             guideTones(0,'maj6') / (0,'min6') → seventh 7 (G=5th), hasSeventh:false.
+ */
+export function guideTones(rootPc, quality) {
+  const type   = CHORD_TYPES[quality] ?? CHORD_TYPES.maj
+  const r      = ((rootPc % 12) + 12) % 12
+  const ints   = type.intervals
+  const third  = (r + ints[1]) % 12                      // index 1 is always the 3rd
+  // A chord has a TRUE 7th only if its interval set contains 10 (m7) or 11 (M7).
+  // `length >= 4` is wrong: add9 [0,2,4,7] and maj6/min6 [0,4,7,9] are 4-tone
+  // chords with NO seventh, so their secondary anchor must fall back to the 5th —
+  // never badge a 5th/6th as a "7". (add9 → hasSeventh:false, anchor=5th.)
+  const seventhInt = ints.find(i => i === 10 || i === 11)   // m7 / M7
+  const hasSeventh = seventhInt !== undefined
+  // Secondary anchor: the true 7th when present; otherwise the perfect 5th (7).
+  // When no perfect 5th exists either (dim/dim7 carry a ♭5=6, aug carries a #5=8),
+  // anchor on whichever altered 5th the chord actually contains.
+  const fifthInt = ints.includes(7) ? 7 : ints.includes(6) ? 6 : ints.includes(8) ? 8 : 7
+  const seventh = (r + (hasSeventh ? seventhInt : fifthInt)) % 12
+  return { third, seventh, root: r, hasSeventh }
+}
+
+/**
+ * voiceLeadingPairs(chordA, chordB) → [{ from, to, semitones }]
+ *
+ * The voice-leading rails between two adjacent stations. For each guide tone of
+ * chordA (its 3rd and 7th) it finds the nearest tone of chordB (chordB's full
+ * tone set) and returns the smallest signed semitone move (negative = falls,
+ * positive = rises). Only rails moving ≤2 semitones are kept — that is the
+ * "smooth voice leading" band; bigger leaps are not rails. A 0-semitone rail
+ * (a held common tone) is kept so the design can draw "B holds → next loop".
+ *
+ * Each chord is { root, quality } (pitch class + CHORD_TYPES key).
+ *
+ * Sanity — ii–V–I in C (the gold-standard rails):
+ *   Dm7 → G7 : 7th of Dm7 (C=0) → 3rd of G7 (B=11)  ⇒ { from:0,  to:11, semitones:-1 }
+ *   G7  → Cmaj7: 7th of G7 (F=5) → 3rd of Cmaj7 (E=4) ⇒ { from:5, to:4,  semitones:-1 }
+ * i.e. the classic 7→3 falls a half-step, proving C→B and F→E.
+ */
+export function voiceLeadingPairs(chordA, chordB) {
+  const a = guideTones(chordA.root, chordA.quality)
+  const targets = chordTonePcs(chordB.root, chordB.quality)
+
+  // smallest signed interval from pc x to pc y, in range (-6, 6]
+  const signedStep = (x, y) => {
+    let d = (((y - x) % 12) + 12) % 12
+    if (d > 6) d -= 12
+    return d
+  }
+
+  const rails = []
+  for (const from of [a.seventh, a.third]) {        // 7th first (the headline 7→3 rail)
+    let best = null
+    for (const to of targets) {
+      const semitones = signedStep(from, to)
+      if (Math.abs(semitones) > 2) continue          // only smooth moves are rails
+      if (best === null || Math.abs(semitones) < Math.abs(best.semitones)) {
+        best = { from, to, semitones }
+      }
+    }
+    if (best) rails.push(best)
+  }
+  return rails
+}
+
+// Default solo scale per chord quality (used when a KB pack didn't author an
+// improv.scales entry for a degree). Maps a CHORD_TYPES key → a SCALES mode.
+// 'locrian' is named here even though it isn't in SCALES (the KB references it
+// for half-diminished); intervals are provided so a caller never has to look it
+// up in SCALES for the half_dim case.
+const SOLO_SCALE_BY_QUALITY = {
+  maj:      'major',
+  maj7:     'major',       // Ionian; packs may upgrade to Lydian via improv.scales
+  maj6:     'major',
+  add9:     'major',
+  dom7:     'mixolydian',
+  min:      'dorian',
+  min7:     'dorian',
+  min6:     'dorian',
+  half_dim: 'locrian',
+  dim:      'diminished',
+  dim7:     'diminished',
+  aug:      'whole_tone',
+  sus4:     'mixolydian',
+  sus2:     'major',
+}
+
+// Locrian isn't in SCALES (no diatonic degree uses it); supply its intervals so
+// soloScale can return a complete { name, intervals } for half-diminished.
+const LOCRIAN_INTERVALS = [0, 1, 3, 5, 6, 8, 10]
+
+/**
+ * soloScale(quality, mode) → { name, intervals }
+ *
+ * The computed default scale to solo over a chord of the given quality — the
+ * fallback for packs that didn't author an improv.scales entry. Returns the
+ * same shape callers already get from SCALES (a relative interval set) plus its
+ * mode `name`, so the Roadmap SCALE lane can label it ("G mixolydian") and the
+ * fretboard can offset the intervals against the chord root.
+ *
+ * `mode` (the song's key mode, e.g. 'major'/'minor') is an optional context
+ * hint: a dominant chord in a minor key implies the ♭9 colour, so we nudge
+ * dom7 → phrygian dominant there; otherwise it is ignored. This keeps the
+ * default sensible without needing per-chord KB data.
+ *
+ * Sanity: soloScale('dom7')         → { name:'mixolydian', intervals:[0,2,4,5,7,9,10] }
+ *         soloScale('min7')         → { name:'dorian',     intervals:[0,2,3,5,7,9,10] }
+ *         soloScale('maj7')         → { name:'major',      intervals:[0,2,4,5,7,9,11] }
+ *         soloScale('half_dim')     → { name:'locrian',    intervals:[0,1,3,5,6,8,10] }
+ *         soloScale('dom7','minor') → phrygian-dominant intervals (♭9 over the V)
+ */
+export function soloScale(quality, mode) {
+  // Dominant in a minor key → Phrygian dominant (the ♭9/♭13 "V of i" sound).
+  if (quality === 'dom7' && mode === 'minor') {
+    return { name: 'phrygian_dominant', intervals: [0, 1, 4, 5, 7, 8, 10] }
+  }
+  const name = SOLO_SCALE_BY_QUALITY[quality] ?? 'major'
+  const intervals = name === 'locrian'
+    ? LOCRIAN_INTERVALS
+    : (SCALES[name] ?? SCALES.major)
+  return { name, intervals }
+}
+
 // ─── Progression suggestions ─────────────────────────────────────────────────
 
 export function getSuggestedProgressions(root, mode) {
@@ -358,21 +520,65 @@ export function toRomanNumeral(chordName, keyRoot, keyMode) {
   return isMinorQuality ? rn.toLowerCase() : rn
 }
 
-// ─── Repeating progression detection ─────────────────────────────────────────
+// ─── Repeating progression detection ──────────────────────────────────────────
 
-// Returns true if arr is made of a shorter repeating unit (e.g. [A,B,A,B] → true)
-function isPeriodicPattern(arr) {
-  for (let p = 1; p <= Math.floor(arr.length / 2); p++) {
-    if (arr.length % p !== 0) continue
-    const unit = arr.slice(0, p)
-    if (arr.every((v, i) => v === unit[i % p])) return true
+// True if arr has a "weak period" p < arr.length — i.e. arr[i] === arr[i-p] for
+// every i ≥ p, meaning arr is a prefix of some p-periodic infinite sequence.
+// This rejects not only exact repetitions ([A,B,A,B], p=2) but also self-overlap
+// fragments/rotations of a shorter loop ([A,B,A], p=2; [C,G,Am,F,C], p=4) that
+// would otherwise mint ghost candidates out of a short vamp. A genuine loop is
+// never weak-periodic: a loop whose tail restates its head would produce an
+// adjacent duplicate at the cycle seam, which the window collapse removes.
+function hasShorterPeriod(arr) {
+  for (let p = 1; p < arr.length; p++) {
+    let periodic = true
+    for (let i = p; i < arr.length; i++) {
+      if (arr[i] !== arr[i - p]) { periodic = false; break }
+    }
+    if (periodic) return true
   }
   return false
 }
 
+// Match one occurrence of `cand` in `win` anchored at `start` (the first chord
+// must match exactly), tolerating at most ONE edit per cycle: a substitution
+// (one chord misdetected) or an insertion (one foreign chord slipped between two
+// loop chords). The remainder after the edit must match exactly. Returns
+// { end, matched, editPos } — `matched` = window indices that matched a loop
+// chord, `editPos` = window index of the edit (-1 if the occurrence is exact) —
+// or null if no match.
+function matchLoopOccurrence(win, start, cand) {
+  if (win[start] !== cand[0]) return null
+  const matched = [start]
+  let i = start + 1
+  for (let j = 1; j < cand.length; j++) {
+    if (i >= win.length) return null
+    if (win[i] === cand[j]) { matched.push(i); i++; continue }
+
+    // First mismatch — the single allowed edit. Fork the two readings; each
+    // requires the rest of the candidate to match exactly from where it lands.
+    const exactFrom = (wi, cj) => {
+      const tail = []
+      for (; cj < cand.length; cj++, wi++) {
+        if (wi >= win.length || win[wi] !== cand[cj]) return null
+        tail.push(wi)
+      }
+      return { end: wi, tail }
+    }
+    const ins = exactFrom(i + 1, j)     // win[i] is a foreign inserted chord
+    const sub = exactFrom(i + 1, j + 1) // win[i] is cand[j] misdetected
+    const hit = ins ?? sub              // insertion keeps one more matched chord
+    if (!hit) return null
+    return { end: hit.end, matched: [...matched, ...hit.tail], editPos: i }
+  }
+  return { end: i, matched, editPos: -1 }
+}
+
 // Returns the lexicographically smallest rotation so the same loop always
 // produces the same string regardless of where in the cycle we currently are.
-function canonicalize(pattern) {
+// Exported additively for match.js's seedableLoop / round-trip pool (task L-60,
+// jam-roulette.md §3.2) — the seed must canonicalize identically to detection.
+export function canonicalize(pattern) {
   let best = pattern
   for (let i = 1; i < pattern.length; i++) {
     const rot = [...pattern.slice(i), ...pattern.slice(0, i)]
@@ -382,42 +588,75 @@ function canonicalize(pattern) {
 }
 
 /**
- * detectRepeatingProgression(history) → chord[] or null
+ * detectRepeatingProgression(history) → chord[] or null   (task L-30)
  *
- * Tests every unique subsequence of every length (not just the tail) so the
- * result is stable regardless of where in the loop the musician currently is.
- * Returns the canonical (rotation-normalised) form of the best pattern found.
+ * Finds the loop the musician is playing NOW in the recent chord history.
+ * Candidates are contiguous slices (lengths 2–8) of the last-32 window with
+ * consecutive duplicate commits collapsed; candidates that are self-overlaps
+ * of a shorter period are rejected (see hasShorterPeriod). Each candidate is
+ * scored by recency-weighted COVERAGE: non-overlapping occurrences are counted
+ * with at most one substitution or insertion per cycle, every matched chord
+ * adds its recency weight, every edit subtracts the weight at the edit slot.
+ * Linear coverage (not reps × len²) means a ghost pattern straddling noise can
+ * never outscore the true loop, and exponential recency decay means the current
+ * section outscores a longer stale one. Requires ≥2 EXACT occurrences: an
+ * edit-tolerant occurrence corroborates a loop but cannot establish it — a
+ * loop means the sequence came back exactly, and a ghost slice that absorbs a
+ * noise chord into itself rarely recurs exactly (only phase-locked corruption
+ * of the same slot by the same chord can make one recur — and such data is
+ * genuinely periodic at that longer length). Returns the canonical
+ * (rotation-normalised) best pattern.
  */
 export function detectRepeatingProgression(history) {
   if (!history || history.length < 6) return null
 
-  const win = history.slice(-32)
-  let best = null, bestScore = 0
+  // Collapse consecutive duplicate commits — a chord re-committed back-to-back
+  // is the same loop slot, not two. Non-adjacent repeats (e.g. Em … Em inside a
+  // 7-chord form) are meaningful and untouched.
+  const raw = history.slice(-32)
+  const win = raw.filter((c, i) => i === 0 || c !== raw[i - 1])
+  const n = win.length
+  if (n < 4) return null // shortest loop (2 chords) × 2 reps
 
-  for (let len = 2; len <= 6; len++) {
-    if (len * 2 > win.length) break
+  // Recency weight per window slot: newest chord weighs 1, each step back
+  // decays by 0.9 (half-life ≈ 6.6 chords).
+  const RECENCY = 0.9
+  const weight = Array.from({ length: n }, (_, i) => RECENCY ** (n - 1 - i))
 
+  let best = null
+  let bestScore = 0
+
+  for (let len = 2; len <= 8; len++) {
+    if (len * 2 > n) break
     const seen = new Set()
 
-    for (let start = 0; start <= win.length - len; start++) {
+    for (let start = 0; start <= n - len; start++) {
       const candidate = win.slice(start, start + len)
       const key = candidate.join('\0')
       if (seen.has(key)) continue
       seen.add(key)
 
-      // A pattern that is itself a repetition of something shorter will be
-      // found at that shorter length — skip it here to avoid inflating scores.
-      if (len >= 4 && isPeriodicPattern(candidate)) continue
+      if (hasShorterPeriod(candidate)) continue
 
-      let reps = 0, i = 0
-      while (i <= win.length - len) {
-        if (candidate.every((c, j) => c === win[i + j])) { reps++; i += len }
-        else i++
+      let exactOccurrences = 0
+      let score = 0
+      let i = 0
+      while (i < n) {
+        const occ = matchLoopOccurrence(win, i, candidate)
+        // A 2-chord candidate may not take a substitution (1 matched chord is
+        // no evidence); insertions keep matched === len and stay allowed.
+        if (occ && occ.matched.length >= 2) {
+          if (occ.editPos < 0) exactOccurrences++
+          for (const p of occ.matched) score += weight[p]
+          if (occ.editPos >= 0) score -= weight[occ.editPos]
+          i = occ.end
+        } else {
+          i++
+        }
       }
 
-      if (reps < 2) continue
+      if (exactOccurrences < 2) continue // implies occurrences ≥ 2
 
-      const score = reps * len * len  // square length — prevents sub-patterns from beating full loop
       if (score > bestScore) {
         bestScore = score
         best = candidate
@@ -506,4 +745,174 @@ export function transposeChord(chordName, semitones) {
 
 export function transposeProgression(chords, semitones) {
   return chords.map(c => transposeChord(c, semitones))
+}
+
+// ─── "Try this" — key-aware substitution nudge (task L-73) ────────────────────
+//
+// Curated, learnable chord-substitution engine for the Jam Guide dashboard.
+// Spec: docs/design/try-this-subs.md §2 (the 4 category rules) + §3 (the worked
+// Am–C–F truth-tables). For the chord under the playhead, in the detected key,
+// returns up to 4 alternatives — each with one plain sentence that teaches WHY
+// it works. This is NOT the context-free colour-swap grid in education.js; this
+// one is key-aware and changes the root (relative / secondary dominant).
+//
+// All-in-module: reuses NOTES, NOTES_FLAT, noteName, noteIndex, CHORD_TYPES,
+// getChordsInKey, getScale, intervalName, toRomanNumeral, chordTonePcs. It does
+// NOT import match.js's chordRootPC (that would be circular) — it uses theory's
+// own noteIndex(keyInfo.root) for the key root pc.
+
+// Chord-quality families the rules branch on.
+const SUB_MAJOR_FAMILY = ['maj', 'maj7', 'maj6', 'add9']
+const SUB_MINOR_FAMILY = ['min', 'min7', 'min6']
+// Key modes with a major tonic ("major-ish") — the only readings under which the
+// borrowed-iv (Rule B) is honest. A minor/dorian/phrygian reading suppresses it.
+const SUB_MAJORISH_MODES = ['major', 'lydian', 'mixolydian']
+
+// Scale-degree vocabulary for the extension why-copy ("E is C's 3rd (the mediant)").
+const DEGREE_ORDINALS = ['root', '2nd', '3rd', '4th', '5th', '6th', '7th']
+const DEGREE_NAMES    = ['tonic', 'supertonic', 'mediant', 'subdominant', 'dominant', 'submediant', 'leading tone']
+
+// Name a pitch class by its scale degree in the key, e.g. "3rd (the mediant)".
+// Returns null if the pc is not diatonic (Rule C never calls it off-scale).
+function subDegreeWord(pc, keyRootPc, mode) {
+  const scale = SCALES[mode] ?? SCALES.major
+  const semi  = ((((pc - keyRootPc) % 12) + 12) % 12)
+  const idx   = scale.indexOf(semi)
+  if (idx < 0) return null
+  return `${DEGREE_ORDINALS[idx]} (the ${DEGREE_NAMES[idx]})`
+}
+
+/**
+ * suggestSubstitutions({ rootPc, quality }, keyInfo, opts = {})
+ *   → [{ rootPc, quality, label, why, category }]
+ *
+ * Categories, always in this order (softest → boldest), capped at 4:
+ *   relative · borrowed · extension · secondary_dominant
+ * Returns [] when there is no key (`!keyInfo?.root`) — the UI shows an idle line.
+ *
+ * `label = NOTES[rootPc] + CHORD_TYPES[quality].suffix`. `opts.nextRootPc` (the
+ * next loop station's root pc) gates Rule D. See docs/design/try-this-subs.md §2.
+ *
+ * Sanity (Am–C–F loop, §3):
+ *   F/maj (5) in A minor, next Am (9) → [Dm(rel), Fmaj7(ext), E7(2nd-dom)]  (no Fm)
+ *   F/maj (5) in C major, next Am (9) → [Dm, Fm(borrowed), Fmaj7, E7]        (cap 4)
+ *   Am/min(9) → next C (0): Rule D = G7 ;  C/maj(0) → next F (5): Rule D = C7
+ */
+export function suggestSubstitutions({ rootPc, quality } = {}, keyInfo, opts = {}) {
+  if (!keyInfo?.root) return []
+  const keyRootPc = noteIndex(keyInfo.root)
+  if (keyRootPc < 0 || rootPc == null || quality == null) return []
+
+  const mode      = keyInfo.mode ?? 'major'
+  const r         = ((rootPc % 12) + 12) % 12
+  const origLabel = NOTES[r] + (CHORD_TYPES[quality]?.suffix ?? '')
+  const isMajorFam = SUB_MAJOR_FAMILY.includes(quality)
+  const isMinorFam = SUB_MINOR_FAMILY.includes(quality)
+
+  // Diatonic chord-name set + scale pitch-class set for the gates.
+  const diatonic = new Set(getChordsInKey(keyInfo.root, mode))
+  const scaleInts = SCALES[mode] ?? SCALES.major
+  const scalePcs  = new Set(scaleInts.map(i => (keyRootPc + i) % 12))
+
+  const mk = (candRootPc, candQuality, why, category) => {
+    const pc = ((candRootPc % 12) + 12) % 12
+    return {
+      rootPc: pc,
+      quality: candQuality,
+      label: NOTES[pc] + (CHORD_TYPES[candQuality]?.suffix ?? ''),
+      why,
+      category,
+    }
+  }
+
+  const out = []
+
+  // ── Rule A — relative / diatonic-third sub (softest). Circle: inner ring. ──
+  // major-family → relative minor (root+9); minor-family → relative major (root+3).
+  // Emit only if the candidate is diatonic in the key.
+  {
+    let candRootPc = null, candQuality = null
+    if (isMajorFam)      { candRootPc = (r + 9) % 12; candQuality = 'min' }
+    else if (isMinorFam) { candRootPc = (r + 3) % 12; candQuality = 'maj' }
+    if (candRootPc !== null) {
+      const label = NOTES[candRootPc] + (CHORD_TYPES[candQuality].suffix)
+      if (diatonic.has(label)) {
+        // Shared tones = intersection of the two triads (root & 3rd of the original).
+        const origTones = new Set(chordTonePcs(r, quality))
+        const shared    = chordTonePcs(candRootPc, candQuality).filter(t => origTones.has(t))
+        const sharedNames = shared.map(t => noteName(t)).join(' & ')
+        const relWord = isMajorFam ? 'minor' : 'major'
+        const pull    = isMajorFam ? 'softer' : 'brighter'
+        const rn      = toRomanNumeral(label, keyInfo.root, mode)
+        out.push(mk(candRootPc, candQuality,
+          `${label} is ${origLabel}'s relative ${relWord} — shares ${sharedNames}. `
+          + `In this key it's the ${rn}: a ${pull} pull, same family. `
+          + `(Circle: its inner-ring relative.)`,
+          'relative'))
+      }
+    }
+  }
+
+  // ── Rule B — borrowed iv (the "Creep" move), conditional. NOT a circle step. ──
+  // Only under a major-ish reading, on the IV (root === keyRoot+5), major-family.
+  if (isMajorFam && SUB_MAJORISH_MODES.includes(mode) && r === (keyRootPc + 5) % 12) {
+    const n6  = noteName(keyRootPc + 9)            // natural 6th of the key
+    const nb6 = noteName(keyRootPc + 8, true)      // ♭6 — spelled FLAT (A→A♭, never G#)
+    out.push(mk(r, 'min',
+      `Borrow ${NOTES[r]}m (the iv) from the parallel minor — ${n6}→${nb6} adds that `
+      + `wistful pull home. The 'Creep' move.`,
+      'borrowed'))
+  }
+
+  // ── Rule C — extension / colour (same function, one diatonic colour tone). ──
+  // Vertical colour, NOT a circle step. Pick the first extension whose added tone
+  // is diatonic; omit the category if none qualifies.
+  //
+  // Two guards keep the suggestion an honest ALTERNATIVE, not the chord already
+  // sounding (the common case — jazz stations are min7/maj7/dom7):
+  //   (a) skip any candidate whose quality === the input quality — the chord
+  //       already carries that colour (a min7 input never re-emits min7).
+  //   (b) minor-family offers ONLY min7. CHORD_TYPES.add9 = [0,2,4,7] is a MAJOR
+  //       add9 (interval 4 = major 3rd), so applying it to a minor chord would
+  //       raise the 3rd (Dm → D, F♮→F♯) = a wrong-note suggestion. Never do it.
+  {
+    let opts2 = null
+    if (isMajorFam)          opts2 = [['maj7', 11], ['add9', 2], ['maj6', 9]]
+    else if (isMinorFam)     opts2 = [['min7', 10]]
+    else if (quality === 'dom7') opts2 = [['sus4', 5]]
+    if (opts2) {
+      const pick = opts2.find(([q, interval]) =>
+        q !== quality && scalePcs.has((r + interval) % 12))
+      if (pick) {
+        const [extQuality, interval] = pick
+        const addedPc   = (r + interval) % 12
+        const addedNote = noteName(addedPc)
+        const rn        = toRomanNumeral(origLabel, keyInfo.root, mode)
+        const dw        = subDegreeWord(addedPc, keyRootPc, mode)
+        out.push(mk(r, extQuality,
+          `Add the ${intervalName(interval).toLowerCase()} (${addedNote}) — same ${rn}, lusher. `
+          + `${addedNote} is ${keyInfo.root}'s own ${dw}, so it stays in the family.`,
+          'extension'))
+      }
+    }
+  }
+
+  // ── Rule D — secondary dominant of the next chord (boldest). Circle move. ──
+  // V7 of the next loop chord = (nextRootPc+7) dom7. Requires a known next chord;
+  // omit when the candidate is the identical chord already sounding.
+  if (opts.nextRootPc != null) {
+    const nextPc     = ((opts.nextRootPc % 12) + 12) % 12
+    const candRootPc = (nextPc + 7) % 12
+    const isSameChord = candRootPc === r && quality === 'dom7'
+    if (!isSameChord) {
+      const leadingTone = noteName(candRootPc + 4)   // dom7's 3rd = ascending leading tone (SHARP)
+      const nextName    = noteName(nextPc)
+      out.push(mk(candRootPc, 'dom7',
+        `Swap for ${NOTES[candRootPc]}7, the V7 of ${nextName} — its 3rd (${leadingTone}) leans `
+        + `a half-step into ${nextName}, pulling the loop around. One step clockwise on the circle.`,
+        'secondary_dominant'))
+    }
+  }
+
+  return out.slice(0, 4)
 }

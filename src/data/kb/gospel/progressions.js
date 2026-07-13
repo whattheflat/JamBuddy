@@ -1,0 +1,100 @@
+// Gospel progressions. Moves and theory verified against:
+//   hearandplay.com (6-2-5-1 turnaround, #4-diminished resolution, Amen cadence),
+//   pianogroove.com (gospel passing chords / hymn reharmonization),
+//   gospelmaps.com "Top 10 Gospel Chord Progressions",
+//   Wikipedia: Plagal cadence, Backdoor progression.
+// Song references are kept honest: where a single definitive recording isn't
+// certain, the move is described by its standard use in the tradition.
+//
+// Level tags + the two intermediate progressions added by task P-20.
+// Walk-up/tag theory verified against: hearandplay.com ("Little known ways to
+// use diminished walk-ups and walk-downs", "An In-Depth Breakdown Of The
+// Classic 1-4 Walk-Up"), pianogroove.com (Gospel Walk-Ups; Gospel Passing
+// Chords & Substitutions), docs/progression-repertoire.md §1 (I–♯i°–ii,
+// I–I7–IV, IV–iv–I rows).
+export default [
+  {
+    id: 'gospel-cycle-251',
+    name: 'Cascading 2–5–1s (cycle of dominants)',
+    rn: ['iii7', 'VI7', 'ii7', 'V7', 'Imaj7'],
+    degrees: [4, 9, 2, 7, 0],
+    qualities: ['min7', 'dom7', 'min7', 'dom7', 'maj7'],
+    bars: [1, 1, 1, 1, 2],
+    mode: 'major',
+    songs: ['traditional gospel turnaround', 'His Eye Is on the Sparrow (reharmonized)'],
+    tip: 'Every root falls a fifth and the off-diatonic VI7 pushes hard to ii — chain two ii–V cells back to back and the ear is dragged home. Voice-lead the 3rds and 7ths and your hand barely moves.',
+    level: 'intermediate',
+  },
+  {
+    id: 'gospel-amen-625',
+    name: '6–2–5–1 turnaround into the Amen',
+    rn: ['vi7', 'ii7', 'V7', 'Imaj7', 'IV', 'Imaj7'],
+    degrees: [9, 2, 7, 0, 5, 0],
+    qualities: ['min7', 'min7', 'dom7', 'maj7', 'maj', 'maj7'],
+    bars: [1, 1, 1, 1, 1, 2],
+    mode: 'major',
+    songs: ['traditional hymn endings', "I'll Fly Away (turnaround/tag)"],
+    tip: 'The 6–2–5–1 is the gospel turnaround — the extended cousin of the 2–5–1 that returns you from chorus to verse. Tag it with the plagal IV–I "Amen" for the classic church ending.',
+    level: 'foundation',
+  },
+  {
+    id: 'gospel-iv-passing-dim',
+    name: 'IV–#iv°7–I (passing diminished)',
+    rn: ['Iadd9', 'IV', '#iv°7', 'Iadd9'],
+    degrees: [0, 5, 6, 0],
+    qualities: ['add9', 'maj', 'dim7', 'add9'],
+    bars: [2, 1, 1, 2],
+    mode: 'major',
+    songs: ['gospel hymn reharmonization', 'Amazing Grace (passing-chord arrangement)'],
+    tip: 'The #iv°7 is a chromatic passing chord linking IV back to I (bass walks 4 → #4 → 5/1). It is almost a signature of the gospel sound — one borrowed diminished and a plain hymn turns into church.',
+    level: 'intermediate',
+  },
+  {
+    id: 'gospel-sus-vamp',
+    name: 'Modern praise vamp (6–4–5–1, sus/9th)',
+    rn: ['vi7', 'IVadd9', 'Vsus4', 'Iadd9'],
+    degrees: [9, 5, 7, 0],
+    qualities: ['min7', 'add9', 'sus4', 'add9'],
+    bars: [1, 1, 1, 1],
+    mode: 'major',
+    songs: ['Every Praise — Hezekiah Walker (vamp feel)', 'contemporary gospel/CCM praise loop'],
+    tip: 'Contemporary gospel leans on open sus and add9 colour instead of plain triads — the suspended 4th over V never fully resolves, keeping the vamp hovering and "lifting". Loop it; the tension is the point.',
+    level: 'foundation',
+  },
+  {
+    id: 'gospel-backdoor',
+    name: 'iii–vi with the back door (♭VII7→I)',
+    rn: ['iii7', 'vi7', '♭VII7', 'Imaj7'],
+    degrees: [4, 9, 10, 0],
+    qualities: ['min7', 'min7', 'dom7', 'maj7'],
+    bars: [1, 1, 1, 1],
+    mode: 'major',
+    songs: ['gospel/soul turnaround', 'standard back-door cadence (e.g. Tenderly, bars 5–7)'],
+    tip: 'iii→vi is a soft diatonic drop; the ♭VII7 is the "back door" — a borrowed dominant a whole step below I that resolves up by step instead of down a fifth. A warmer, less expected way home than V7.',
+    level: 'intermediate',
+  },
+  {
+    id: 'gospel-walkup-dim',
+    name: 'Chromatic walk-up (I–♯i°7–ii7–V7)',
+    rn: ['Imaj7', '♯i°7', 'ii7', 'V7'],
+    degrees: [0, 1, 2, 7],
+    qualities: ['maj7', 'dim7', 'min7', 'dom7'],
+    bars: [1, 1, 1, 1],
+    mode: 'major',
+    songs: ['traditional gospel walk-up (bass climbs 1–♯1–2)', 'the standard hymn-to-church reharmonization move'],
+    tip: 'The ♯i°7 turns the step from I to ii into two half-steps — the bass climbs while the upper voices barely move. It works because ♯i°7 is a rootless VI7♭9, the secondary dominant of ii in disguise; then the V7 launches the loop again.',
+    level: 'intermediate',
+  },
+  {
+    id: 'gospel-tonicized-amen',
+    name: 'Tonicized Amen (I–I7–IV–iv–I)',
+    rn: ['Imaj7', 'I7', 'IVmaj7', 'iv6', 'Imaj7'],
+    degrees: [0, 0, 5, 5, 0],
+    qualities: ['maj7', 'dom7', 'maj7', 'min6', 'maj7'],
+    bars: [1, 1, 1, 1, 2],
+    mode: 'major',
+    songs: ['Amazing Grace ("how sweet the sound" — the I7 pointing at IV)', 'traditional hymn tag (Amen with the borrowed iv)'],
+    tip: 'Two borrowed notes tell the whole story: the ♭7 that turns I into the dominant of IV (a secondary dominant, V7/IV), and the ♭3 that turns IV minor on the way home. Both fall by half step — the gospel tag is a pair of sighs.',
+    level: 'intermediate',
+  },
+]

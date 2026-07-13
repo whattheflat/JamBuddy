@@ -37,7 +37,10 @@ function keyColor(isChordTone, isPenta, isScale, isBlack, mono = false) {
     : { fill: '#f5f5f5', text: '#6b7280' }
 }
 
-export default function Piano({ keyInfo, currentChord, monoColor = false }) {
+// `compact` (task L-50, one-screen.md §2): trimmed card chrome (p-3, legend
+// merged onto the heading line) + a natural-width cap on the SVG (max-width =
+// its viewBox width, so it never renders above scale 1.0).
+export default function Piano({ keyInfo, currentChord, monoColor = false, compact = false }) {
   const { root, mode } = keyInfo ?? {}
   if (!root) return null
 
@@ -51,15 +54,36 @@ export default function Piano({ keyInfo, currentChord, monoColor = false }) {
   const svgW = totalWhite * KEY_W + 2
   const svgH = KEY_H + 20  // +20 for octave labels
 
+  const heading = (
+    <p className={`text-sm text-gray-500 uppercase tracking-widest ${compact ? '' : 'mb-4'}`}>
+      Piano — {root} {mode}
+      {currentChord && <span className="text-amber-400 ml-2">/ {currentChord}</span>}
+    </p>
+  )
+
+  const legend = (
+    // Critic mechanical fix (L-50 gate): non-compact keeps HEAD's exact class
+    // string so the non-compact render stays byte-identical to the committed one.
+    <div className={compact ? 'flex items-center text-xs text-gray-500 flex-wrap gap-3' : 'mt-3 flex gap-5 text-xs text-gray-500'}>
+      <span><span className="text-accent">●</span> Chord tone</span>
+      <span><span style={{ color: monoColor ? '#c084fc' : '#f59e0b' }}>●</span> Pentatonic</span>
+      <span><span style={{ color: monoColor ? '#e9d5ff' : '#6b7280' }}>●</span> Scale</span>
+    </div>
+  )
+
   return (
-    <div className="bg-panel border border-border rounded-2xl p-6">
-      <p className="text-sm text-gray-500 uppercase tracking-widest mb-4">
-        Piano — {root} {mode}
-        {currentChord && <span className="text-amber-400 ml-2">/ {currentChord}</span>}
-      </p>
+    <div className={`bg-panel border border-border rounded-2xl ${compact ? 'p-3' : 'p-6'}`}>
+      {compact ? (
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          {heading}
+          {legend}
+        </div>
+      ) : (
+        heading
+      )}
 
       <div>
-        <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" height="auto" style={{ display: 'block' }}>
+        <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" height="auto" style={{ display: 'block', ...(compact ? { maxWidth: svgW } : null) }}>
 
           {/* White keys */}
           {Array.from({ length: OCTAVES }, (_, oct) =>
@@ -132,11 +156,7 @@ export default function Piano({ keyInfo, currentChord, monoColor = false }) {
         </svg>
       </div>
 
-      <div className="mt-3 flex gap-5 text-xs text-gray-500">
-        <span><span className="text-accent">●</span> Chord tone</span>
-        <span><span style={{ color: monoColor ? '#c084fc' : '#f59e0b' }}>●</span> Pentatonic</span>
-        <span><span style={{ color: monoColor ? '#e9d5ff' : '#6b7280' }}>●</span> Scale</span>
-      </div>
+      {!compact && legend}
     </div>
   )
 }

@@ -6,3 +6,19 @@ body {
   color: #f5f5f5;
   font-family: system-ui, -apple-system, sans-serif;
 }
+
+/* Thin, dark, overlay-feel scrollbars for the jam dashboard's scrollers
+   (dashboard-polish.md §4). Scoped (a class), NOT global — the KnowledgeDock /
+   Debug / Tuner / Settings keep the OS default. Raw hex is unavoidable here:
+   ::-webkit-scrollbar pseudo-elements are not reachable by Tailwind utilities;
+   the values mirror the design tokens (border #2a2a2a, panel #1a1a1a). */
+.dark-scroll {
+  scrollbar-width: thin;                    /* Firefox */
+  scrollbar-color: #2a2a2a transparent;     /* thumb = border token · track transparent */
+}
+.dark-scroll::-webkit-scrollbar { width: 8px; height: 8px; }        /* WebKit/Blink */
+.dark-scroll::-webkit-scrollbar-track { background: transparent; }
+.dark-scroll::-webkit-scrollbar-thumb {
+  background: #2a2a2a; border-radius: 4px;  /* border token */
+}
+.dark-scroll::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
