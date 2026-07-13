@@ -861,6 +861,7 @@ export default function App() {
               keyInfo={effectiveKey}
               currentChord={currentChord}
               onChordClick={setSelectedChord}
+              instrument={instrument}
             />
             <RelatedProgressions
               loop={detectedProgression}
