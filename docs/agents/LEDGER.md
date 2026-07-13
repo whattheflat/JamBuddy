@@ -56,6 +56,32 @@ Standing principles (memory): scroll > click; nothing duplicated; one global ins
 
 ---
 
+## Active sprint: `sprint-dashboard-polish` (branch: `sprint-jamguide-piano` — continued; commits extend PR #3)
+
+**Goal (user directive 2026-07-13, after running the one-screen build):** "this looks amazing" + six refinements to the live dashboard:
+
+1. **Guitar: 4 options max** — "only have 4 guitar options visible so it would fit the screen without scrolling." Cap each chord's guitar gallery to ≤4 shapes (a musically-sensible top-4 selection rule; fewer is fine).
+2. **Hidden-but-scrollable dark scrollbars** — "the scroll bars are not visible but it can scroll if we need to (make them black or something)." Thin/dark styled scrollbars, overlay feel; content still scrolls.
+3. **Piano: 2×2 smaller keyboards** — "smaller keyboards so there would be 2×2 for each chord." The 4 pianoVoicing styles in a 2-col × 2-row grid of compact MiniPianos per chord.
+4. **Remove play buttons** — "leave off the PLAY buttons, they take up a lot of space for no reason, no need to hear it." Drop every ▶ from the voicings rail (and the licks strip — Maestro extension, matching the stated glance-over-audio preference; also removes the shared-sequencer blocker so piano licks can wire in cleanly).
+5. **Licks: uniform size + follow the instrument** — "the licks section should all have the same size and transform into piano when selected." Uniform card size; the strip follows the global GUITAR/PIANO/BASS selector — wiring the deferred PianoLickCard into the strip (bass → no licks / honest note).
+6. **Related progressions: same-style bridge/chorus/modifications** — "i would also want bridge/chorus/modifications in the same style… say i select jam roulette with blues, then i want for that progression other options and not necessarily go into other styles." Same-style variations for the active/rolled loop. **Scope pending a user decision (asked 2026-07-13) — the D-72/L-72/P-70 shape depends on the answer.**
+
+Standing principles (memory): scroll > click; nothing duplicated; one global instrument selector; playhead highlights; glance over audio. User is PRESENT — notification-driven, no cron. Weights: Muse 3, Luthier 3, Critic gate.
+
+| id | title | domain | status | depends-on | files (lock) | definition of done |
+|----|-------|--------|--------|-----------|--------------|--------------------|
+| M-08 | Seed `sprint-dashboard-polish` | maestro | done | — | `docs/agents/LEDGER.md` | seeded |
+| D-70 | Rail + licks layout concept doc: (a) guitar ≤4 shapes with the selection rule (open + common movable, lowest-position-first — name it); (b) piano 4 voicings as a 2×2 grid of compact MiniPianos — pick the MiniPiano thumb scale that fits two side-by-side in the ~456px column interior and two rows within a sane row height, honest math; (c) all ▶ removed from the rail's guitar+piano cells AND the licks strip (name every removal site); (d) hidden-but-scrollable scrollbars — the mechanism (webkit ::-webkit-scrollbar thin + dark thumb, and Firefox scrollbar-width/color; overlay where supported) and WHERE it applies (the rail's overflow-y column, any inner scrollers); (e) licks: uniform card footprint (thumb size parity between LickCard and PianoLickCard) + the strip follows the global instrument (guitar→piano licks on PIANO; bass honest empty); (f) recompute the row heights + the 500px column budget with the new smaller cells; migration order with bounded L-70/L-71 scopes (keep them file-disjoint or serialize on JamGuide.jsx). No user gate: pick strongest, record rationale + ≥2 rejected alternatives | design | ready | — | `docs/design/dashboard-polish.md` | every change specced with honest numbers; the 2×2 piano scale chosen + proven to fit; bounded impl scopes |
+| L-70 | Implement the voicings rail per D-70: guitar ≤4, 2×2 smaller piano, ▶ removed, dark hidden scrollbars | engineering | backlog | D-70 | `src/components/GlanceRail.jsx`, `src/components/VoicingBrowser.jsx`, `src/index.css` (scrollbar CSS) (+ per doc — re-lock at promotion) | rail matches the spec; no ▶; guitar ≤4; piano 2×2; scrollbars hidden+dark+functional; build + smoke green |
+| L-71 | Implement the licks strip per D-70: uniform card size, follow the global instrument (wire PianoLickCard), ▶ removed | engineering | backlog | D-70, L-70 | `src/components/JamGuide.jsx` (LicksStrip), `src/components/LickCard.jsx`, `src/components/PianoLickCard.jsx` (+ per doc — re-lock at promotion) | licks uniform; piano licks show under PIANO; no ▶; bass honest; build + smoke green |
+| D-72 | Same-style related-progressions design ("bridge/chorus/modifications") — **SCOPE SET BY THE USER ANSWER**; picks how same-style options are generated + how they render (labels, section framing), keeping RelatedProgressions' cross-style behaviour available where no style is locked | design | backlog | (user answer) | `docs/design/related-same-style.md` | mechanism spec'd against the real match.js/KB; L-72 bounded |
+| C-70 | Sprint-end sweep + PR #3 update | quality | backlog | L-70, L-71, (D-72 chain) | (none — verification) | all green; PR updated |
+
+> Sequencing: D-70 ready now → L-70 → L-71 (serial on JamGuide.jsx). The related-progressions chain (D-72 → …) unblocks once the user answers. C-70 closes. Critic gates every task.
+
+---
+
 ## Shipped sprint: `sprint-integrated-glance` (branch: `sprint-jamguide-piano` — complete 2026-07-10, 4 iterations, PR #3 updated)
 
 **Goal (user directive 2026-07-10, after testing the glance-mode sprint — "its already a lot better, but"):**
