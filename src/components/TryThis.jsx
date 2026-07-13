@@ -5,16 +5,23 @@ import { pianoVoicing } from '../lib/piano'
 import ChordDiagram from './ChordDiagram'
 import MiniPiano from './MiniPiano'
 
-// ─── TryThis — side-by-side substitution cards, each with a mini diagram (L-75) ─
+// ─── TryThis — stable 3-slot rows-of-shapes substitution rail (L-78 / D-76) ─────
 //
-// For the chord under the playhead, in the detected key, show ALL curated
-// substitutions (from theory.js `suggestSubstitutions`, the L-73 engine) SIDE BY
-// SIDE — one card per idea — each carrying a mini instrument diagram of that
-// chord (guitar ChordDiagram / piano MiniPiano / bass root caption), following
-// the global instrument. Reverses L-74's rotating one-at-a-time card: the user
-// saw the rotation and asked for all-visible ("put them next to each other, we
-// have enough space"). Spec: docs/design/related-area-layout.md §1–3.
-// Sibling of RelatedProgressions; same micro-header + chip idiom.
+// For the chord under the playhead, in the detected key, show up to THREE curated
+// substitutions (from theory.js `suggestSubstitutions`, the L-73 engine) as
+// stacked ROWS — turned 90° from L-75's cards-across. Each row = a left identity
+// block (tappable chord chip + category tag + why) and a right "ways to play it"
+// block that follows the global instrument:
+//   guitar → up to 3 ChordDiagram thumbs (the 3×3 grid), the genuinely different
+//            grips from getGuitarVoicings(label).slice(0, 3)
+//   piano  → ONE MiniPiano ("for piano it can be just one thats okay")
+//   bass   → a root · {note} caption (no honest compact bass-chord renderer)
+//
+// The layout is a FIXED 3-slot frame: present subs render SubRow, absent slots
+// render a subtle EmptySlot that holds the exact row height — so sub #1 and #2
+// never shift position whether the chord yields 2 or 3 subs (the user's anti-jump
+// ask: "annoying when the layout changes then u dont know where to look").
+// Spec: docs/design/related-area-v2.md §2. Sibling of RelatedProgressions.
 //
 // Props:
 //   loop         : string[] | null — the detected repeating progression (chord names)
@@ -54,6 +61,14 @@ const CATEGORY_TAG = {
   secondary_dominant: 'V7',
 }
 
+// Per-instrument uniform row height (§2.2/§3). All 3 slots — filled or empty —
+// share the current instrument's height so the frame never reflows.
+const ROW_MIN_H = {
+  guitar: 'min-h-[100px]',
+  piano: 'min-h-[72px]',
+  bass: 'min-h-[64px]',
+}
+
 // Compute the substitution set for a chord NAME at loop index `pos` (−1 when the
 // chord is not a loop station). The next station's root pc gates Rule D (secondary
 // dominant of the next chord). Returns { name, pos, subs } or null when the name
@@ -89,22 +104,26 @@ function pickSubject(loopArr, keyInfo, currentChord) {
   return null
 }
 
-// The mini diagram drawn inside a SubCard, chosen by the global instrument (§2):
-//   guitar → first resolved guitar shape (absolute frets) via ChordDiagram thumb;
-//            no shape available → no diagram (honest, chip + why only).
-//   piano  → pianoVoicing for the chord, rootPc spread back in so the "R" badge
-//            lands correctly (VoicingBrowser:317-319 caveat), MiniPiano size mini.
-//   bass   → no diagram (no honest compact bass-chord renderer); a small
-//            root · {note} caption instead.
-function SubDiagram({ sub, instrument }) {
+// The "ways to play" block on the right of a SubRow, chosen by the global
+// instrument (§2.3):
+//   guitar → up to 3 ChordDiagram thumbs (the 3×3), each captioned with its shape
+//            name so the three read as genuinely different grips. Fewer than 3
+//            shapes exist (e.g. add9 → 2 for most roots) → show what exists, never
+//            pad with fakes (honest, §2.4). None → nothing (chip + why carry it).
+//   piano  → ONE MiniPiano; rootPc spread back in so the "R" badge lands right.
+//   bass   → root · {note} caption (no honest compact bass-chord renderer).
+function WaysToPlay({ sub, instrument }) {
   if (instrument === 'piano') {
     return (
-      <MiniPiano
-        voicing={{ ...pianoVoicing({ rootPc: sub.rootPc, quality: sub.quality }), rootPc: sub.rootPc }}
-        size="mini"
-      />
+      <div className="flex items-center">
+        <MiniPiano
+          voicing={{ ...pianoVoicing({ rootPc: sub.rootPc, quality: sub.quality }), rootPc: sub.rootPc }}
+          size="mini"
+        />
+      </div>
     )
   }
+
   if (instrument === 'bass') {
     return (
       <span className="text-[10px] text-gray-500">
@@ -112,39 +131,71 @@ function SubDiagram({ sub, instrument }) {
       </span>
     )
   }
-  // guitar (default): first resolved shape; omit the label — the chip names it.
-  const shape = getGuitarVoicings(sub.label)[0]
-  if (!shape) return null
-  return <ChordDiagram shape={shape} rootPc={sub.rootPc} size="thumb" />
+
+  // guitar (default): up to 3 genuinely different grips, left-aligned. Omit the
+  // ChordDiagram label (the chip names the chord) — caption the shape name below.
+  const shapes = getGuitarVoicings(sub.label).slice(0, 3)
+  if (!shapes.length) return null
+  return (
+    <div className="flex gap-2">
+      {shapes.map((shape, i) => (
+        <div key={`${shape.label}-${i}`} className="flex flex-col items-center gap-0.5">
+          <ChordDiagram shape={shape} rootPc={sub.rootPc} size="thumb" />
+          <span className="max-w-[75px] truncate text-center text-[9px] leading-none text-gray-500">
+            {shape.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
-// One substitution card — chip (tappable → modal) + mini diagram + tag + why.
-function SubCard({ sub, instrument, onChordClick }) {
+// One substitution ROW — left identity (chip → modal + tag + why) | right ways.
+function SubRow({ sub, instrument, onChordClick }) {
   const isCircle = CIRCLE_CATEGORIES.has(sub.category)
   const tag = CATEGORY_TAG[sub.category] ?? sub.category
   return (
-    <div className="flex min-w-0 flex-col items-center gap-1.5 rounded-lg border border-border bg-border/30 p-2">
-      <button
-        type="button"
-        onClick={() => onChordClick?.(sub.label)}
-        aria-label={`${sub.label} — ${sub.why}`}
-        className="shrink-0 rounded-lg border border-border bg-border px-2 py-1 text-sm font-bold leading-none text-gray-100 outline-none transition-all cursor-pointer hover:border-accent/50 hover:text-accent focus-visible:ring-2 focus-visible:ring-accent"
-      >
-        {sub.label}
-      </button>
-
-      <div className="flex min-h-[38px] items-center justify-center">
-        <SubDiagram sub={sub} instrument={instrument} />
+    <div
+      className={`flex items-center gap-3 rounded-lg border border-border bg-border/30 p-2 ${ROW_MIN_H[instrument] ?? ROW_MIN_H.guitar}`}
+    >
+      {/* Left identity block (~180px) */}
+      <div className="flex w-[180px] shrink-0 flex-col gap-1">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onChordClick?.(sub.label)}
+            aria-label={`${sub.label} — ${sub.why}`}
+            className="shrink-0 rounded-lg border border-border bg-border px-2 py-1 text-sm font-bold leading-none text-gray-100 outline-none transition-all cursor-pointer hover:border-accent/50 hover:text-accent focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {sub.label}
+          </button>
+          <span className="text-[9px] uppercase tracking-wide text-gray-500">
+            {tag}
+            {isCircle && <span className="ml-0.5 text-accent" aria-hidden="true">↻</span>}
+          </span>
+        </div>
+        <p className="line-clamp-2 text-[11px] leading-snug text-gray-400">
+          {sub.why}
+        </p>
       </div>
 
-      <span className="text-[9px] uppercase tracking-wide text-gray-500">
-        {tag}
-        {isCircle && <span className="ml-0.5 text-accent" aria-hidden="true">↻</span>}
-      </span>
+      {/* Right "ways to play" block */}
+      <div className="min-w-0 flex-1">
+        <WaysToPlay sub={sub} instrument={instrument} />
+      </div>
+    </div>
+  )
+}
 
-      <p className="line-clamp-3 text-center text-[11px] leading-snug text-gray-400">
-        {sub.why}
-      </p>
+// A reserved-but-empty slot — holds the exact SubRow height so the present subs
+// never move when the chord yields fewer than 3 (§2.2, the anti-jump).
+function EmptySlot({ instrument }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`flex items-center justify-center rounded-lg border border-dashed border-border/50 bg-transparent ${ROW_MIN_H[instrument] ?? ROW_MIN_H.guitar}`}
+    >
+      <span className="text-[11px] text-gray-600">—</span>
     </div>
   )
 }
@@ -157,16 +208,7 @@ export default function TryThis({ loop, keyInfo, currentChord, onChordClick, ins
   if (!subject) return null
 
   const subjectChord = subject.name
-  const subs = subject.subs
-
-  // Piano keyboards are up to ~199px wide (C-anchored window), so 4 cannot share a
-  // 720px row — lay them out 2×2. Guitar (75px cell) and bass (no diagram) sit
-  // 4-across in one flex-wrap row; with 1–3 subs the cards grow to fill (§1.1/§3).
-  const isPiano = instrument === 'piano'
-  const listClass = isPiano
-    ? 'grid grid-cols-1 sm:grid-cols-2 gap-2'
-    : 'flex flex-wrap gap-2'
-  const cardBasis = isPiano ? '' : 'basis-[168px] grow min-w-[152px]'
+  const subs = subject.subs.slice(0, 3) // cap at 3 (§2.1)
 
   return (
     <section
@@ -178,12 +220,14 @@ export default function TryThis({ loop, keyInfo, currentChord, onChordClick, ins
         {keyInfo?.root ? ` · in ${keyInfo.root} ${keyInfo.mode ?? 'major'}` : ''}
       </h4>
 
-      <div className={listClass}>
-        {subs.map((sub, i) => (
-          <div key={`${sub.label}-${i}`} className={cardBasis}>
-            <SubCard sub={sub} instrument={instrument} onChordClick={onChordClick} />
-          </div>
-        ))}
+      {/* Fixed 3-slot frame — a present sub → SubRow, an absent one → EmptySlot,
+          so sub #1/#2 hold their position whether there are 2 or 3 subs. */}
+      <div className="flex flex-col gap-2">
+        {[0, 1, 2].map(i =>
+          subs[i]
+            ? <SubRow key={`${subs[i].label}-${i}`} sub={subs[i]} instrument={instrument} onChordClick={onChordClick} />
+            : <EmptySlot key={`empty-${i}`} instrument={instrument} />
+        )}
       </div>
     </section>
   )
