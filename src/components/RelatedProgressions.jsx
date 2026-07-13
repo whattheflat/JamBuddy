@@ -137,13 +137,69 @@ function degreeSetJaccard(aCanon, bCanon) {
   return union ? inter / union : 0
 }
 
+// Summed bar count of a progression (the total form length), or null when the
+// KB entry carries no `bars` array. Used only by siblingRole (§3 rules 2–4).
+function totalBars(prog) {
+  const bars = Array.isArray(prog?.bars) ? prog.bars : null
+  if (!bars) return null
+  return bars.reduce((sum, n) => sum + (typeof n === 'number' ? n : 0), 0)
+}
+
 /**
- * rankRelatedProgressions(loop, kbRegistry?) → { match, entries } | null
+ * siblingRole(sibling, active) → role phrase | null   (same-style-first §3)
  *
- * The §5 ranking. Returns null when the loop yields no degrees (no loop /
- * unparseable chord names) — the caller renders the idle state. `entries` is
- * score-desc (stable by style, id), floored at RELATED_SCORE_FLOOR, at most
- * RELATED_MAX_ENTRIES, never padded. Exported for smoke coverage.
+ * A short character phrase framing a same-style `sibling` against the `active`
+ * (matched) progression, derived ONLY from KB `mode` / `bars` / `qualities`.
+ * First rule that fires:
+ *   1. mode differs           → "{mode} version" (minor/major, else the name)
+ *   2. same mode, fewer bars   → "shorter form"
+ *   3. same mode, more bars     → "extended form"
+ *   4. same mode & length, a quality the active lacks → "reharmonized"
+ *   5. otherwise                → null (honest: name + level only)
+ * Returns null when `active` is unresolved. The finding-B gate (a sibling that
+ * shares NO genuine relationship with the played loop) is applied at the call
+ * site — see the `genuine` guard in rankRelatedProgressions.
+ */
+export function siblingRole(sibling, active) {
+  if (!sibling || !active) return null
+  const sMode = sibling.mode ?? null
+  const aMode = active.mode ?? null
+  // 1. mode differs → the mode-flavoured version.
+  if (sMode && aMode && sMode !== aMode) {
+    if (sMode === 'minor') return 'minor version'
+    if (sMode === 'major') return 'major version'
+    return `${sMode} version`
+  }
+  // 2–4 only compare within a shared mode (or when both modes are absent).
+  if (sMode !== aMode) return null
+  const sBars = totalBars(sibling)
+  const aBars = totalBars(active)
+  if (sBars != null && aBars != null) {
+    if (sBars < aBars) return 'shorter form'
+    if (sBars > aBars) return 'extended form'
+  }
+  // 4. same mode & length: a colour the active progression lacks.
+  const aQ = new Set(Array.isArray(active.qualities) ? active.qualities : [])
+  const sQ = Array.isArray(sibling.qualities) ? sibling.qualities : []
+  if (aQ.size && sQ.some(q => !aQ.has(q))) return 'reharmonized'
+  return null
+}
+
+/**
+ * rankRelatedProgressions(loop, kbRegistry?) →
+ *   { match, activeStyle, activeStyleLabel, primary, secondary, entries } | null
+ *
+ * The §5 ranking, extended for same-style-first (L-72, docs/design/related-
+ * same-style.md). Returns null when the loop yields no degrees. When the loop
+ * matches a KB progression, `activeStyle = match.style` and the panel leads with
+ * that style's OTHER progressions (same-style siblings) — floor relaxed to 0,
+ * scorer order kept, each carrying a `role` phrase (siblingRole, §3). Per the
+ * Maestro finding-A resolution, when a style is locked the panel shows SAME-STYLE
+ * ONLY (`secondary` stays empty — no cross-style section). When `!match.matched`
+ * (`activeStyle == null`) the pre-existing cross-style flat list is returned
+ * unchanged (floor RELATED_SCORE_FLOOR, annotations). `entries` =
+ * `primary.concat(secondary)` for back-compat with `entries[0]` reads.
+ * Exported for smoke coverage.
  */
 export function rankRelatedProgressions(loop, kbRegistry = kb) {
   const loopDeg = loopToDegrees(loop)
@@ -152,6 +208,17 @@ export function rankRelatedProgressions(loop, kbRegistry = kb) {
   const index = kbRegistry === kb ? DEFAULT_INDEX : buildLoopIndex(kbRegistry)
   const match = matchLoopToProgression(loop, index)
   const loopT = transitionsOf(loopUnitsOf(loop, loopDeg))
+
+  // §1: the active style IS the component's own match (roulette seed + live
+  // detection both route through the L-60 collapsed index). No prop needed.
+  const activeStyle = match.matched ? match.style : null
+  const activeStyleLabel = activeStyle
+    ? kbRegistry[activeStyle]?.meta?.label ?? activeStyle
+    : null
+  // The raw active KB entry — authoritative mode/bars for siblingRole (§3).
+  const activeProg = activeStyle
+    ? kbRegistry[activeStyle]?.progressions?.find(p => p.id === match.id) ?? null
+    : null
 
   const entries = []
   for (const style of Object.keys(kbRegistry)) {
@@ -166,7 +233,7 @@ export function rankRelatedProgressions(loop, kbRegistry = kb) {
       const pCanon = canonicalDegrees(collapsed.map(u => u.deg))
       const shared = sharedTransitions(loopT, transitionsOf(collapsed))
       const sameChanges = pCanon === loopCanon
-      const sameStyle = match.matched && style === match.style
+      const sameStyle = activeStyle != null && style === activeStyle
 
       let score = 0
       if (sameChanges) score += SCORE_SAME_CHANGES
@@ -174,15 +241,25 @@ export function rankRelatedProgressions(loop, kbRegistry = kb) {
       score += Math.min(shared.length * SCORE_PER_TRANSITION, TRANSITION_CAP)
       score += degreeSetJaccard(loopCanon, pCanon) * SCORE_JACCARD
       score -= Math.abs(loop.length - collapsed.length)
-      if (score < RELATED_SCORE_FLOOR) continue // never pad with junk
+      // §2/§4: same-style siblings bypass the floor (never "junk" — they are the
+      // "other options" the user asked for); cross-style keeps the floor.
+      const floor = sameStyle ? 0 : RELATED_SCORE_FLOOR
+      if (score < floor) continue
 
-      // §5 annotation: why this entry is here (survivors always have one —
-      // below the floor nothing scores on Jaccard − length alone).
+      // §5 annotation (cross-style rows): why this entry is here.
       const annotation = sameChanges
         ? 'same changes'
         : shared.length
           ? `shares ${shared[0].rnFrom || '?'}→${shared[0].rnTo || '?'}`
           : 'same style'
+
+      // §3 role (same-style rows only). finding-B gate: emit a phrase only when
+      // there is a genuine relationship to the played loop — identical changes
+      // OR at least one shared (Δ, quality→quality) transition. A distantly-
+      // related same-style sibling (neither) gets no false "extended form" /
+      // "reharmonized" label — just its name + level.
+      const genuine = sameChanges || shared.length > 0
+      const role = sameStyle && genuine ? siblingRole(prog, activeProg) : null
 
       entries.push({
         style,
@@ -191,7 +268,10 @@ export function rankRelatedProgressions(loop, kbRegistry = kb) {
         name: prog.name,
         level: prog.level === 'intermediate' ? 'intermediate' : 'foundation', // untagged counts foundation
         score,
+        sameChanges,
+        sameStyle,
         annotation,
+        role,
         progression: prog,
       })
     }
@@ -200,7 +280,25 @@ export function rankRelatedProgressions(loop, kbRegistry = kb) {
   entries.sort(
     (a, b) => b.score - a.score || a.style.localeCompare(b.style) || a.id.localeCompare(b.id)
   )
-  return { match, entries: entries.slice(0, RELATED_MAX_ENTRIES) }
+
+  // §2 + finding-A: with a style locked, primary = same-style siblings only
+  // (cap 5), secondary dropped. Without a lock, the flat cross-style list.
+  let primary, secondary
+  if (activeStyle != null) {
+    primary = entries.filter(e => e.sameStyle).slice(0, RELATED_MAX_ENTRIES)
+    secondary = [] // finding-A: no cross-style section when a style is locked
+  } else {
+    primary = entries.slice(0, RELATED_MAX_ENTRIES)
+    secondary = []
+  }
+  return {
+    match,
+    activeStyle,
+    activeStyleLabel,
+    primary,
+    secondary,
+    entries: primary.concat(secondary),
+  }
 }
 
 // ─── Presentational bits ──────────────────────────────────────────────────────
@@ -283,6 +381,8 @@ export default function RelatedProgressions({ loop, keyInfo, onChordClick }) {
     )
   }
 
+  const { activeStyle, activeStyleLabel, primary } = ranked
+
   return (
     <section
       className="rounded-2xl border border-border bg-panel p-3"
@@ -292,29 +392,55 @@ export default function RelatedProgressions({ loop, keyInfo, onChordClick }) {
         Related progressions · from the songbook
         {keyInfo?.root ? ` · in ${keyInfo.root}` : ''}
       </h4>
-      {ranked.entries.length === 0 ? (
-        // Loop, but nothing clears the floor — honest, never padded (§5).
-        <p className="text-sm text-gray-500">
-          Nothing in the songbook genuinely relates to this loop yet.
-        </p>
+      {primary.length === 0 ? (
+        activeStyle != null ? (
+          // Locked to a style with no siblings (§5 edge). Honest, never padded.
+          <p className="text-sm text-gray-500">
+            You&rsquo;re on the only {activeStyleLabel} loop in the songbook.
+          </p>
+        ) : (
+          // Loop, but nothing clears the floor — honest, never padded (§5).
+          <p className="text-sm text-gray-500">
+            Nothing in the songbook genuinely relates to this loop yet.
+          </p>
+        )
       ) : (
-        <ul className="flex flex-col gap-2.5">
-          {ranked.entries.map(entry => (
-            <li key={`${entry.style}-${entry.id}`} className="min-w-0">
-              <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                <span className="text-sm font-semibold text-gray-100">{entry.name}</span>
-                <span className="text-xs text-gray-500">{entry.styleLabel}</span>
-                <LevelBadge level={entry.level} />
-                <span className="text-[10px] text-gray-500">{entry.annotation}</span>
-              </div>
-              <ChordChain
-                progression={entry.progression}
-                keyRoot={keyRoot}
-                onChordClick={onChordClick}
-              />
-            </li>
-          ))}
-        </ul>
+        <>
+          {/* §2/§3: when a style is locked, lead with its OTHER progressions
+              reframed as variations to try — same-style only (finding-A). */}
+          {activeStyle != null && (
+            <p className="mb-2 text-xs font-medium text-gray-300">
+              Try these in {activeStyleLabel}
+            </p>
+          )}
+          <ul className="flex flex-col gap-2.5">
+            {primary.map(entry => (
+              <li key={`${entry.style}-${entry.id}`} className="min-w-0">
+                <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                  <span className="text-sm font-semibold text-gray-100">{entry.name}</span>
+                  {/* Same-style rows share the header's style — hide the redundant
+                      label; cross-style rows keep it. */}
+                  {activeStyle == null && (
+                    <span className="text-xs text-gray-500">{entry.styleLabel}</span>
+                  )}
+                  <LevelBadge level={entry.level} />
+                  {/* Same-style rows show the role phrase (omitted when null,
+                      finding-B); cross-style rows keep the §5 annotation. */}
+                  {activeStyle != null
+                    ? entry.role && (
+                        <span className="text-[10px] text-gray-500">{entry.role}</span>
+                      )
+                    : <span className="text-[10px] text-gray-500">{entry.annotation}</span>}
+                </div>
+                <ChordChain
+                  progression={entry.progression}
+                  keyRoot={keyRoot}
+                  onChordClick={onChordClick}
+                />
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </section>
   )

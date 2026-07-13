@@ -1319,7 +1319,7 @@ check('fix (a) live: a clean collapsed 12-bar commit stream detects + matches bl
 console.log('\nRelatedProgressions ranking pins (C-50):')
 
 const relMod = await load('src/components/RelatedProgressions.jsx')
-const { rankRelatedProgressions, collapseChanges } = relMod
+const { rankRelatedProgressions, collapseChanges, siblingRole } = relMod
 const { loopToDegrees, canonicalDegrees } = match
 
 const LOOP_12BAR_A = ['A7', 'D7', 'A7', 'E7', 'D7', 'A7', 'E7'] // detection-collapsed 12-bar
@@ -1347,13 +1347,18 @@ check('collapseChanges(blues-minor) pops the wrap-around pair → 5 units [0,5,0
 })
 
 const rank12 = rankRelatedProgressions(LOOP_12BAR_A)
-check('pin (a): collapsed 12-bar → matcher now recognizes blues-12bar (fix (a)); it self-excludes, blues-8bar tops at exactly 92, "shares I7→V7"', () => {
+check('pin (a): collapsed 12-bar → matcher recognizes blues-12bar (fix (a)); it self-excludes, activeStyle=blues, blues-8bar tops the same-style primary at exactly 92, role "shorter form"', () => {
   assert(rank12, 'ranking returned null for a parseable loop')
   // Re-pinned for L-60 fix (a): the collapsed-form index makes the detected
   // collapsed 12-bar match blues-12bar itself, which the id-only rule excludes
   // from its own related list (§8's pre-fix note foretold exactly this flip).
   assert(rank12.match.matched && rank12.match.id === 'blues-12bar',
     `match is ${rank12.match.matched ? rank12.match.id : 'NONE'} — fix (a) should make the collapsed 12-bar match blues-12bar`)
+  // L-72 same-style-first: the match's style is the active style; the panel
+  // leads with SAME-STYLE ONLY siblings (finding-A → secondary dropped).
+  assert(rank12.activeStyle === 'blues', `activeStyle is ${rank12.activeStyle}, expected blues`)
+  assert(rank12.secondary.length === 0, 'secondary is non-empty — finding-A drops cross-style when a style is locked')
+  assert(rank12.primary.every((e) => e.style === 'blues'), 'a non-blues entry leaked into the same-style primary')
   assert(!rank12.entries.some((e) => e.id === 'blues-12bar'),
     'blues-12bar leaked into its own related list — the id-only exclusion broke')
   const top = rank12.entries[0]
@@ -1363,21 +1368,30 @@ check('pin (a): collapsed 12-bar → matcher now recognizes blues-12bar (fix (a)
   assert(top && top.id === 'blues-8bar' && top.style === 'blues',
     `top entry is ${top?.style}/${top?.id}, expected blues/blues-8bar`)
   assert(top.score === 92, `blues-8bar scored ${top.score}, pinned 92 (0 shape + 40 style + 36 transitions + 16 Jaccard − 0 length)`)
-  assert(top.annotation === 'shares I7→V7', `annotation '${top.annotation}' ≠ 'shares I7→V7'`)
+  // L-72 §3: same-mode (major), 8 bars < 12 → role "shorter form" (was the §5
+  // annotation 'shares I7→V7'). Genuine relationship (shares Δ{5,7,10}), so a
+  // role IS emitted (finding-B gate passes).
+  assert(top.role === 'shorter form', `role '${top.role}' ≠ 'shorter form'`)
 })
 
 const rank251 = rankRelatedProgressions(LOOP_251_C)
-check('pin (b): ii–V–I in C → match jazz-251-major (excluded); jazz-251-minor top at exactly 156, "same changes"', () => {
+check('pin (b): ii–V–I in C → match jazz-251-major (excluded); activeStyle=jazz, jazz-251-minor top at exactly 156, role "minor version"', () => {
   assert(rank251, 'ranking returned null for a parseable loop')
   assert(rank251.match.matched && rank251.match.id === 'jazz-251-major',
     `match is ${rank251.match.matched ? rank251.match.id : 'NONE'}, expected jazz-251-major (quality-overlap disambiguation)`)
+  assert(rank251.activeStyle === 'jazz', `activeStyle is ${rank251.activeStyle}, expected jazz`)
+  assert(rank251.secondary.length === 0, 'secondary is non-empty — finding-A drops cross-style when a style is locked')
+  assert(rank251.primary.every((e) => e.style === 'jazz'), 'a non-jazz entry leaked into the same-style primary')
   assert(!rank251.entries.some((e) => e.id === 'jazz-251-major'),
     'the matched progression leaked into its own related list — the id-only exclusion broke')
   const top = rank251.entries[0]
   assert(top && top.id === 'jazz-251-minor' && top.style === 'jazz',
     `top entry is ${top?.style}/${top?.id}, expected jazz/jazz-251-minor`)
   assert(top.score === 156, `jazz-251-minor scored ${top.score}, pinned 156 (100 shape + 40 style + 0 transitions + 16 Jaccard − 0 length)`)
-  assert(top.annotation === 'same changes', `annotation '${top.annotation}' ≠ 'same changes'`)
+  // L-72 §3: mode differs (minor vs the active major) → role "minor version"
+  // (was the §5 annotation 'same changes'). Genuine relationship (same changes),
+  // so the finding-B gate passes even though every quality differs.
+  assert(top.role === 'minor version', `role '${top.role}' ≠ 'minor version'`)
   assert(rank251.entries.length <= 5, `${rank251.entries.length} entries > max 5`)
 })
 
@@ -1430,6 +1444,46 @@ check('pin (c): no-collapse counterfactual — raw blues-12bar would score exact
   const w8 = replicaScore(LOOP_12BAR_A, prog8, true, { collapse: true })
   assert(w8 === 92, `replica of blues-8bar scored ${w8} ≠ 92 — the replica drifted from the §5 formula`)
   assert(rank12.entries[0].score === w8, `replica (${w8}) ≠ live component top score (${rank12.entries[0].score}) — the grounding broke`)
+})
+
+// L-72 finding-B (Critic gate hardening): the `genuine` gate must SUPPRESS the
+// role phrase on a same-style sibling that shares NO transitions with the loop
+// and is not same-changes — otherwise we'd print a false "variation" claim.
+// A7–E7 matches funk; funk-smooth-loop surfaces via the floor-0 same-style rule
+// but is a distant sibling (0 shared, not same-changes). siblingRole() ALONE
+// would still label it (mode/bars differ) — the assertion below proves the GATE
+// is what nulls it. Removing `&& genuine` at the call site turns this red.
+check('finding-B: a distant same-style sibling (0 shared transitions, not same-changes) carries NO role, even though siblingRole() alone would label it', () => {
+  const rf = rankRelatedProgressions(['A7', 'E7'])
+  assert(rf && rf.activeStyle === 'funk', `activeStyle is ${rf?.activeStyle}, expected funk (A7–E7)`)
+  const activeProg = kb.funk.progressions.find((p) => p.id === rf.match.id)
+  assert(activeProg, `could not resolve the active funk progression ${rf.match.id}`)
+  const distant = rf.primary.find((e) => e.id === 'funk-smooth-loop')
+  assert(distant, 'funk-smooth-loop should surface as a same-style sibling (floor relaxed to 0)')
+  assert(distant.sameChanges === false, 'precondition: funk-smooth-loop must NOT be same-changes vs A7–E7')
+  assert(siblingRole(distant.progression, activeProg) !== null,
+    'precondition: siblingRole() ALONE would label funk-smooth-loop — the genuine gate is what must suppress it')
+  assert(distant.role === null,
+    `finding-B breached: distant sibling carries role '${distant.role}' — the \`genuine\` gate was dropped (false variation claim)`)
+})
+
+// L-72 finding-A / no-match fallback (Critic gate hardening, design §6): when the
+// loop matches NO KB progression, activeStyle is null and the panel is the
+// pre-L-72 flat cross-style list — secondary always empty, cross-style rows keep
+// their §5 annotation, and NO role phrases appear. This 8-chord A blues loop is
+// not a canonical collapsed form, so it stays unmatched while still drawing
+// cross-style relatives. Bites if the null path grows an activeStyle default or
+// leaks roles onto cross-style rows.
+check('no-match fallback: unmatched loop → activeStyle null, secondary empty, flat cross-style list with annotations (no roles)', () => {
+  const rNo = rankRelatedProgressions(['A7', 'D7', 'A7', 'A7', 'E7', 'D7', 'A7', 'E7'])
+  assert(rNo, 'ranking returned null for a parseable loop')
+  assert(rNo.match.matched === false, `precondition: expected NO match, got ${rNo.match.id}`)
+  assert(rNo.activeStyle === null, `no-match: activeStyle must be null, got ${rNo.activeStyle}`)
+  assert(rNo.secondary.length === 0, 'no-match: secondary must be empty')
+  assert(rNo.primary.length > 0, 'precondition: expected cross-style relatives above the floor')
+  assert(rNo.primary.every((e) => e.role === null), 'no-match: cross-style rows must carry NO role phrase')
+  assert(rNo.primary.every((e) => typeof e.annotation === 'string' && e.annotation.length > 0),
+    'no-match: cross-style rows must keep their §5 annotation')
 })
 
 // ─── 9. Summary + exit code ───────────────────────────────────────────────────
