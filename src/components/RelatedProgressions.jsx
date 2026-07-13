@@ -413,8 +413,11 @@ export default function RelatedProgressions({ loop, keyInfo, onChordClick }) {
               Try these in {activeStyleLabel}
             </p>
           )}
-          <ul className="flex flex-col gap-2.5">
-            {primary.map(entry => (
+          {/* D-75 §4: 2-col grid to use the left column's width; display cap
+              4 for a clean 2×2 (render-time slice — RELATED_MAX_ENTRIES and the
+              ranker are untouched). Stacks to 1-col on narrow. */}
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {primary.slice(0, 4).map(entry => (
               <li key={`${entry.style}-${entry.id}`} className="min-w-0">
                 <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                   <span className="text-sm font-semibold text-gray-100">{entry.name}</span>
