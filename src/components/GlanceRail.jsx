@@ -48,16 +48,31 @@
 // page mid-jam. The L-33 auto-centre effect was deleted in L-40 and must never
 // return; the highlight travels, the user owns the scrollbar.
 //
+// HYBRID rail reuse (task L-77, refines D-76; user directive 2026-07-13 — "highlight
+// the loop chords when it finds a loop but also add the other chords underneath"):
+// JamGuide now renders GlanceRail TWICE — once for the canonical LOOP group (the
+// original call, byte-unchanged) and once for the "also played" recent-history
+// group. The history group passes `showTransitions={false}` (see the prop below)
+// because history order is NOT canonical: the between-adjacent voice-leading chips
+// and the "next" tag are only true for the loop's canonical wheel, so they are
+// suppressed for the history rail. Everything else (per-row gallery, "now" via
+// activeIndex, the SoloLabel/AimDots guide-tone education) is correct for any chord
+// and stays. Default (`showTransitions` absent) is byte-compatible with the loop.
+//
 // Pure presentational. Props:
 //   stations     — [{ shape, voicing, rootPc, quality, label, rn }] canonical order
 //   activeIndex  — playhead station (canonicalPos); -1 = loop known, playhead
-//                  not — no row is marked "now" (content never changes either way)
+//                  not — no row is marked "now" (content never changes either way).
+//                  The history group passes -1 (no playhead — see JamGuide).
 //   focusedIndex — the focused station index, or null (nothing focused)
 //   onFocus      — fn(index|null): toggle a station's focus
 //   instrument   — 'guitar' | 'piano' (VoicingBrowser `show`; bass never mounts
 //                  this rail — JamGuide renders BassGuideRows instead, D-40 §3)
 //   keyRoot      — key tonic pitch class 0–11 (ChordDiagram fret placement)
 //   keyMode      — key mode name (soloScale's minor-key dominant nudge)
+//   showTransitions — default true (the loop caller is unchanged). false → the
+//                  voice-leading TransitionChips and the "next" tag are suppressed
+//                  (history order is not canonically adjacent, task L-77).
 
 import { NOTES, guideTones, voiceLeadingPairs, soloScale } from '../lib/theory'
 import VoicingBrowser from './VoicingBrowser'
@@ -164,23 +179,38 @@ function StationRow({
       style={{ opacity: isNow || isFocused ? 1 : 0.85 }}
     >
       {/* ── Header line: identity + the folded roadmap education ── */}
+      {/* Loop rows (onToggleFocus provided) keep the focus-toggle button — the
+          D-03 fretboard guide-tone contract, byte-unchanged. History rows pass
+          no toggle → a plain, non-interactive identity (no inert button /
+          misleading "focus" tooltip / stray focus ring), L-77. */}
       <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-        <button
-          type="button"
-          aria-pressed={isFocused}
-          onClick={onToggleFocus}
-          title={isFocused
-            ? `Unfocus ${st.label} — clear its guide tones from the fretboard`
-            : `Focus ${st.label} — light its guide tones on the fretboard`}
-          className="flex min-h-[32px] items-center gap-2 rounded px-1 outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <span className="text-sm font-bold leading-none text-gray-100">{st.label}</span>
-          {st.rn && (
-            <span className="text-[9px] font-medium uppercase tracking-wide text-gray-400">
-              {st.rn}
-            </span>
-          )}
-        </button>
+        {onToggleFocus ? (
+          <button
+            type="button"
+            aria-pressed={isFocused}
+            onClick={onToggleFocus}
+            title={isFocused
+              ? `Unfocus ${st.label} — clear its guide tones from the fretboard`
+              : `Focus ${st.label} — light its guide tones on the fretboard`}
+            className="flex min-h-[32px] items-center gap-2 rounded px-1 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <span className="text-sm font-bold leading-none text-gray-100">{st.label}</span>
+            {st.rn && (
+              <span className="text-[9px] font-medium uppercase tracking-wide text-gray-400">
+                {st.rn}
+              </span>
+            )}
+          </button>
+        ) : (
+          <div className="flex min-h-[32px] items-center gap-2 px-1">
+            <span className="text-sm font-bold leading-none text-gray-100">{st.label}</span>
+            {st.rn && (
+              <span className="text-[9px] font-medium uppercase tracking-wide text-gray-400">
+                {st.rn}
+              </span>
+            )}
+          </div>
+        )}
         {isNow && (
           <span className="text-[9px] font-semibold uppercase tracking-widest text-accent">
             now
@@ -222,17 +252,21 @@ function StationRow({
 
 export default function GlanceRail({
   stations = [], activeIndex = -1, focusedIndex = null, onFocus, instrument, keyRoot, keyMode,
+  showTransitions = true,
 }) {
   const n = stations.length
   if (n === 0) return null
-  const nextIndex = activeIndex >= 0 && n > 1 ? (activeIndex + 1) % n : -1
+  // The "next" tag is a loop-adjacency claim → suppressed for the history group.
+  const nextIndex = showTransitions && activeIndex >= 0 && n > 1 ? (activeIndex + 1) % n : -1
 
   // Voice-leading rails: rail i leaves station i for station (i+1) mod n — the
   // last rail wraps back to station 0 (the loop is a wheel). The headline rail
   // is the 7→3 (voiceLeadingPairs lists the 7th first); a one-chord loop has
-  // no transition to speak of.
+  // no transition to speak of. Suppressed entirely for the history group
+  // (showTransitions=false) — its rows are recent-first, not canonically
+  // adjacent, so a "next F→E" chip would point at the wrong neighbour (L-77).
   const rails = stations.map((st, i) => {
-    if (n < 2) return null
+    if (!showTransitions || n < 2) return null
     const next = stations[(i + 1) % n]
     return voiceLeadingPairs(
       { root: st.rootPc, quality: st.quality },
@@ -240,13 +274,30 @@ export default function GlanceRail({
     )[0] ?? null
   })
 
+  // Section framing (L-77 honesty fix): showTransitions === true ⟺ the canonical
+  // LOOP group; the "also played" history group (showTransitions=false) is recent-
+  // first with no playhead, so it must NOT claim "the loop" / "the playhead". Rows
+  // in the history group are also non-focusable (no onFocus → no inert header
+  // button); the loop group's function keeps its focus toggle byte-unchanged.
+  const isLoop = showTransitions
+  const focusable = typeof onFocus === 'function'
+  const sectionAria = isLoop
+    ? 'Voicing variations — every chord of the loop, all expanded'
+    : 'Voicing variations — every recently played chord, all expanded'
+  const sectionTitle = isLoop
+    ? 'Variations · every chord, every voicing — the playhead highlights'
+    : 'Variations · every chord, every voicing'
+  const sectionFoot = isLoop
+    ? "Voicings follow the loop — the playhead highlights the chord you're on."
+    : 'Recent chords — newest first; every voicing of each.'
+
   return (
     <section
       className="rounded-2xl border border-border bg-panel p-2"
-      aria-label="Voicing variations — every chord of the loop, all expanded"
+      aria-label={sectionAria}
     >
       <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
-        Variations · every chord, every voicing — the playhead highlights
+        {sectionTitle}
       </h4>
 
       <div className="flex flex-col gap-2" role="list">
@@ -257,7 +308,7 @@ export default function GlanceRail({
             isNow={i === activeIndex}
             isNext={i === nextIndex}
             isFocused={focusedIndex === i}
-            onToggleFocus={() => onFocus?.(focusedIndex === i ? null : i)}
+            onToggleFocus={focusable ? (() => onFocus(focusedIndex === i ? null : i)) : null}
             instrument={instrument}
             keyRoot={keyRoot}
             keyMode={keyMode}
@@ -268,9 +319,9 @@ export default function GlanceRail({
       </div>
 
       {/* No ▶ anywhere anymore (dashboard-polish.md §3 — "leave them off,
-          better not"); the rail is purely visual and follows the loop. */}
+          better not"); the rail is purely visual. */}
       <p className="mt-2 text-[11px] text-gray-500">
-        Voicings follow the loop — the playhead highlights the chord you're on.
+        {sectionFoot}
       </p>
     </section>
   )

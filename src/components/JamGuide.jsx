@@ -4,7 +4,6 @@ import { buildLoopIndex, matchLoopToProgression, findLoopPosition, chordRootPC }
 import { NOTES, CHORD_TYPES } from '../lib/theory'
 import GlanceRail, { AimDots, SoloLabel } from './GlanceRail'
 import BassPatternCard from './BassPatternCard'
-import VoicingBrowser from './VoicingBrowser'
 import LickCard, { TechniqueLegend } from './LickCard'
 import PianoLickCard from './PianoLickCard'
 import { ExploreSection, VoicingsSection, LevelChips } from './ExplorePanel'
@@ -163,6 +162,92 @@ function lickFitsContext(lick, context) {
   const tokens = ctx.match(CONTEXT_TOKEN_RE) ?? []
   const wanted = [context.rn, context.quality].filter(Boolean)
   return wanted.length > 0 && tokens.some(t => wanted.includes(t))
+}
+
+// ─── "Also played" history rail helpers (task L-77, refines D-76) ─────────────
+//
+// The HYBRID voicings rail (user directive 2026-07-13 — "highlight the loop
+// chords when it finds a loop but also add the other chords underneath … at
+// least 4 or more"): a loop group (canonical GlanceRail, untouched) PLUS an
+// "also played" group of the other recently-played distinct chords, most-recent-
+// first, and — when no loop is found — just the history group. All parsing reuses
+// the established app idiom (chordRootPC + the CHORD_TYPES suffix inversion,
+// mirroring TryThis.jsx `parseChordName` / RelatedProgressions) — no theory
+// re-derivation.
+
+// Rail size policy. Overall cap across BOTH groups so the column never runs
+// away; the no-loop history rail caps a little lower. The ≥4 guarantee falls out
+// of RAIL_TOTAL_CAP − loopLen ≥ 4 − loopLen for any loopLen ≤ RAIL_TOTAL_CAP:
+// the history top-up is always allowed to reach four total when four distinct
+// chords exist (it never fabricates — it shows only what was actually played).
+const RAIL_TOTAL_CAP = 8       // loop group + "also played" group combined
+const NO_LOOP_HISTORY_CAP = 6  // no loop matched → history rail alone
+
+// Invert CHORD_TYPES suffix → quality (the app idiom — mirrors TryThis.jsx /
+// RelatedProgressions; all 14 suffixes are unique).
+const SUFFIX_TO_QUALITY = Object.fromEntries(
+  Object.entries(CHORD_TYPES).map(([quality, def]) => [def.suffix, quality])
+)
+
+// Parse a chord-name string → { rootPc, quality } via the shared helpers. Returns
+// null when unparseable (unknown suffix / bad root) so the caller drops it.
+function parseHistoryChord(name) {
+  if (typeof name !== 'string') return null
+  const rootPc = chordRootPC(name)
+  if (rootPc < 0) return null
+  const m = name.match(/^[A-G][b#]?(.*)$/)
+  const quality = m ? SUFFIX_TO_QUALITY[m[1]] : undefined
+  if (!quality) return null
+  return { rootPc, quality }
+}
+
+// recentDistinctChords(chordHistory, cap, excludeNames) → GlanceRail-shaped
+// station rows for the "also played" group. Walks chordHistory from the NEWEST
+// end backward, collecting DISTINCT chord NAMES (first-seen-from-newest wins —
+// the most-recent occurrence fixes each chord's slot, so a "F Am F Am" ping-pong
+// yields [Am, F], the different chords each once). Names in `excludeNames` (the
+// loop group's chords) are skipped so the two groups never duplicate a chord.
+// Unparseable names are dropped. Returns MOST-RECENT-FIRST, capped. Empty /
+// undefined history → []. Stations carry identity only (shape/voicing null) — an
+// arbitrary played chord has no authored KB play, exactly the null `recommended`
+// GlanceRail already renders gracefully.
+function recentDistinctChords(chordHistory, cap, excludeNames) {
+  if (!Array.isArray(chordHistory) || cap <= 0) return []
+  const exclude = excludeNames instanceof Set ? excludeNames : new Set(excludeNames ?? [])
+  const seen = new Set()
+  const out = []
+  for (let i = chordHistory.length - 1; i >= 0; i--) {
+    const name = chordHistory[i]
+    if (seen.has(name)) continue
+    seen.add(name)
+    if (exclude.has(name)) continue
+    const parsed = parseHistoryChord(name)
+    if (!parsed) continue
+    out.push({
+      shape: null,
+      voicing: null,
+      rootPc: parsed.rootPc,
+      quality: parsed.quality,
+      label: name,
+      rn: '', // history is key-relative-agnostic here; rn stays empty (cheap, honest)
+    })
+    if (out.length >= cap) break
+  }
+  return out
+}
+
+// Small group caption above each rail group (tokens only — no raw hex).
+function RailGroupCaption({ children, tone = 'loop' }) {
+  return (
+    <p
+      className={
+        'mb-1 px-1 text-[9px] font-semibold uppercase tracking-widest ' +
+        (tone === 'loop' ? 'text-accent/80' : 'text-gray-500')
+      }
+    >
+      {children}
+    </p>
+  )
 }
 
 // ─── JamGuide — the jam dashboard grid (default export) ───────────────────────
@@ -324,6 +409,22 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
     return stations
   }, [match.matched, match.progression, match.style, instrument, keyRoot])
 
+  // ── "Also played" history stations (task L-77, refines D-76) ────────────────
+  // The other recently-played DISTINCT chords, most-recent-first, that are NOT in
+  // the loop group. When a loop is matched the cap tops the two groups up toward
+  // RAIL_TOTAL_CAP; with no loop the history rail stands alone (NO_LOOP_HISTORY_
+  // CAP). Keyed on chordHistory (+ the loop via stationVoicings) so it recomputes
+  // as chords commit. Loop chords are excluded by their rendered label so the two
+  // groups never repeat a chord. instrument-agnostic identity — GlanceRail /
+  // BassGuideRows draw the per-chord gallery from {rootPc, quality}.
+  const historyStations = useMemo(() => {
+    const loopNames = match.matched ? new Set(stationVoicings.map(s => s.label)) : null
+    const cap = match.matched
+      ? Math.max(RAIL_TOTAL_CAP - stationVoicings.length, 0)
+      : NO_LOOP_HISTORY_CAP
+    return recentDistinctChords(chordHistory, cap, loopNames)
+  }, [match.matched, stationVoicings, chordHistory])
+
   // ── Authored bass plays (L-42) ──────────────────────────────────────────────
   // When the matched style ships a bass pack with plays for this progression,
   // BassGuideRows renders each play's per-station pattern card in the gallery
@@ -367,62 +468,108 @@ export default function JamGuide({ detectedProgression, keyInfo, chordHistory = 
   // re-sorting with the jam (D-31 §2.4).
   const contextStation = stationVoicings[canonicalPos >= 0 ? canonicalPos : 0] ?? null
 
-  // ── The rail (right column at xl / second block stacked): the suggested-
-  // voicings surface — GlanceRail, BassGuideRows, the heard-live gallery, or
-  // the honest idle line (one-screen.md §3, §4). ──
+  // ── The rail (right column at xl / second block stacked) — HYBRID (task L-77,
+  // refines D-76; user directive 2026-07-13: "highlight the loop chords when it
+  // finds a loop but also add the other chords underneath … at least 4 or more").
+  // TWO groups, so multiple chords' voicings are ALWAYS visible (the old single-
+  // chord heard-live fallback is retired):
+  //   A) LOOP group (only when a loop matches) — the canonical GlanceRail /
+  //      BassGuideRows, byte-unchanged: KB order, moving "now" playhead, valid
+  //      between-adjacent voice-leading chips. A subtle "the loop" caption marks
+  //      it as THE loop.
+  //   B) "ALSO PLAYED" group — the other recent DISTINCT chords (historyStations),
+  //      most-recent-first, each expanded to its full voicing gallery. NO voice-
+  //      leading chips (showTransitions=false — history order is not canonically
+  //      adjacent) and NO "now" badge (activeIndex=-1). With no loop this group
+  //      stands alone and IS the rail. The ≥4-total guarantee comes from the
+  //      RAIL_TOTAL_CAP top-up in `historyStations` (it shows only chords actually
+  //      played — never fabricates).
+  // Empty history + no loop → the slim idle line (unchanged). Bass mirrors the
+  // hybrid via BassGuideRows (`live` on the history group suppresses approach —
+  // history is not a loop). ──
+  const hasHistory = historyStations.length > 0
   const railContent = match.matched ? (
     instrument === 'bass' ? (
-      /* Bass rows (D-40 §3): authored pattern cards when the matched style
-         ships a bass pack (L-42), computed roots/fifths/approaches as the
-         honest fallback otherwise. The licks strip hides either way
-         (guitar tab licks are noise to a bassist mid-jam). */
-      <BassGuideRows
-        stations={stationVoicings}
-        activeIndex={canonicalPos}
-        keyMode={keyInfo?.mode}
-        plays={bassPlays}
-      />
+      <div className="flex flex-col gap-3">
+        <div>
+          <RailGroupCaption>the loop</RailGroupCaption>
+          {/* Bass rows (D-40 §3): authored pattern cards when the matched style
+              ships a bass pack (L-42), computed roots/fifths/approaches as the
+              honest fallback otherwise. */}
+          <BassGuideRows
+            stations={stationVoicings}
+            activeIndex={canonicalPos}
+            keyMode={keyInfo?.mode}
+            plays={bassPlays}
+          />
+        </div>
+        {hasHistory && (
+          <div>
+            <RailGroupCaption tone="history">also played · newest first</RailGroupCaption>
+            {/* `live` = no approach line (history is not a canonical loop). */}
+            <BassGuideRows
+              stations={historyStations}
+              activeIndex={-1}
+              keyMode={keyInfo?.mode}
+              live
+            />
+          </div>
+        )}
+      </div>
     ) : (
-      /* The voicing rail — ALL stations expanded as vertical rows; the
-         playhead only highlights (D-41, D-40 §4). */
-      <GlanceRail
-        stations={stationVoicings}
-        activeIndex={canonicalPos}
-        focusedIndex={focusedStation}
-        onFocus={setFocusedStation}
-        instrument={instrument}
-        keyRoot={keyRoot}
-        keyMode={keyInfo?.mode}
-      />
+      <div className="flex flex-col gap-3">
+        <div>
+          <RailGroupCaption>the loop</RailGroupCaption>
+          {/* The voicing rail — ALL loop stations expanded as vertical rows; the
+              playhead only highlights (D-41, D-40 §4). Untouched. */}
+          <GlanceRail
+            stations={stationVoicings}
+            activeIndex={canonicalPos}
+            focusedIndex={focusedStation}
+            onFocus={setFocusedStation}
+            instrument={instrument}
+            keyRoot={keyRoot}
+            keyMode={keyInfo?.mode}
+          />
+        </div>
+        {hasHistory && (
+          <div>
+            <RailGroupCaption tone="history">also played · newest first</RailGroupCaption>
+            {/* History group: most-recent-first, no transition chips, no "now". */}
+            <GlanceRail
+              stations={historyStations}
+              activeIndex={-1}
+              instrument={instrument}
+              keyRoot={keyRoot}
+              keyMode={keyInfo?.mode}
+              showTransitions={false}
+            />
+          </div>
+        )}
+      </div>
     )
-  ) : liveChord ? (
-    /* No loop matched, but chords are committing (D-31 §2.3): a single
-       "heard live" gallery, re-aimed on every chord commit. Auto-follow
-       only — nothing plays by itself. Bass: D-40 §3's prose forbids guitar/
-       piano galleries under BASS, so the live chord gets the same computed
-       root/fifth line (no next chord → no approach) instead. */
+  ) : hasHistory ? (
+    /* No loop matched, but chords have been played: the "also played" group IS
+       the rail — recent distinct chords, most-recent-first, ≥4 when available.
+       This replaces the old single-chord heard-live fallback (D-76 §0). Bass:
+       D-40 §3 forbids guitar/piano galleries under BASS, so BassGuideRows draws
+       the computed root/fifth line per chord (`live` → no approach). */
     instrument === 'bass' ? (
       <BassGuideRows
-        stations={[{ rootPc: liveChord.rootPc, quality: liveChord.type, label: currentChord, rn: '' }]}
-        activeIndex={0}
+        stations={historyStations}
+        activeIndex={-1}
         keyMode={keyInfo?.mode}
         live
       />
     ) : (
-      <section
-        className="rounded-2xl border border-border bg-panel p-3"
-        aria-label={`Heard live — every ${instrument} voicing of ${currentChord}`}
-      >
-        <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
-          Heard live · {currentChord} — every voicing
-        </h4>
-        <p className="mb-2 text-[11px] text-gray-500">
-          {detectedProgression?.length
-            ? `Heard ${detectedProgression.join(' → ')} — no ${activeStyle} pattern matched yet; following the chord as it commits.`
-            : 'No repeating loop yet — following the chord as it commits.'}
-        </p>
-        <VoicingBrowser rootPc={liveChord.rootPc} quality={liveChord.type} show={instrument} dense />
-      </section>
+      <GlanceRail
+        stations={historyStations}
+        activeIndex={-1}
+        instrument={instrument}
+        keyRoot={keyRoot}
+        keyMode={keyInfo?.mode}
+        showTransitions={false}
+      />
     )
   ) : (
     /* Nothing heard yet — one slim line (~40px): the idle rail must not
